@@ -55,8 +55,10 @@
   },
 
   "runtime": {
-    "onnx_opset": 17,
+    "onnx_opset": 18,
     "ort_version_pin": "1.24",
-    "pin_rationale": "onnxruntime-react-native lags onnxruntime-web. Both are pinned to the same minor and the export targets an opset the older package supports, so the identical artifact loads on Android and in the browser."
+    "pin_rationale": "onnxruntime-react-native lags onnxruntime-web. Both are pinned to the same minor and the export targets an opset the older package supports, so the identical artifact loads on Android and in the browser.",
+    "opset_rationale": "18, not the 17 originally chosen. Antialiased bilinear resize (aten::_upsample_bilinear2d_aa) has no TorchScript ONNX exporter at opset 17 or 18, and dropping antialias would have degraded downscaling for every phone photo, which arrive far larger than 224px. The dynamo exporter handles it at opset 18. ONNX Runtime 1.24 supports well beyond 18, so the earlier choice was conservative rather than required.",
+    "exporter": "dynamo"
   }
 }

@@ -31,6 +31,9 @@ export = [
     # Pinned to the same minor as onnxruntime-react-native so the exported artifact is
     # guaranteed to load on Android. See runtime.pin_rationale in shared/model_meta.json.
     "onnxruntime~=1.24.0",
+    # Required by the dynamo ONNX exporter, which is the only path that can export
+    # antialiased bilinear resize. See runtime.opset_rationale in shared/model_meta.json.
+    "onnxscript>=0.1",
 ]
 dev = [
     "pytest>=8.3",

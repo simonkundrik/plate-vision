@@ -34,8 +34,11 @@ jobs:
       - name: Install torch (CPU)
         run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
+      # The export extra is included so the PyTorch-versus-ONNX parity test gates every
+      # PR. That test is the one that proves the graph the app runs matches the model the
+      # metrics describe, which is not worth deferring to release time.
       - name: Install
-        run: pip install -e ".[dev,train]"
+        run: pip install -e ".[dev,train,export]"
 
       - name: Lint
         run: ruff check --output-format=github .
