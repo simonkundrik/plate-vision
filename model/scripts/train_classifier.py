@@ -31,6 +31,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from platevision import checkpoint, datasets, engine, models, transforms
+from platevision.distillation import DistillationConfig, Distiller
 from platevision.ema import ModelEma
 from platevision.mixing import MixingPolicy
 
@@ -118,6 +119,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="START",
         help="ramp training resolution from START up to the contract size",
     )
+
+    kd = parser.add_argument_group("distillation")
+    kd.add_argument("--teacher", type=Path, help="teacher checkpoint to distil from")
+    kd.add_argument("--kd-alpha", type=float, default=0.5, help="weight on the soft loss")
+    kd.add_argument("--kd-temperature", type=float, default=4.0)
     args = parser.parse_args(argv)
 
     engine.seed_everything(args.seed)
@@ -170,6 +176,23 @@ def main(argv: list[str] | None = None) -> int:
     ema = ModelEma(model, decay=args.ema_decay) if args.ema else None
     if ema:
         print(f"ema:    decay {args.ema_decay} with warmup")
+
+    distiller = None
+    if args.teacher:
+        teacher, teacher_payload = checkpoint.restore_classifier(args.teacher)
+        if teacher_payload["num_classes"] != num_classes:
+            raise SystemExit(
+                f"teacher predicts {teacher_payload['num_classes']} classes but the student "
+                f"has {num_classes}. Their logits must be aligned class-for-class for the "
+                "soft targets to mean anything."
+            )
+        distiller = Distiller(
+            teacher, DistillationConfig(alpha=args.kd_alpha, temperature=args.kd_temperature)
+        ).to(device)
+        print(
+            f"kd:     {teacher_payload['backbone']} teacher, "
+            f"alpha {args.kd_alpha}, T {args.kd_temperature}"
+        )
     if args.progressive_resize:
         print(f"resize: {resolutions[0]} -> {resolutions[-1]}")
 
@@ -199,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
             mixing=mixing_policy,
             ema=ema,
             resolution=resolutions[epoch],
+            distiller=distiller,
         )
         history.add(train_result)
         print(train_result.format(), flush=True)
