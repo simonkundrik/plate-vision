@@ -1,0 +1,13 @@
+# Normalise line endings so diffs stay readable across Windows and the Linux CI runners.
+* text=auto eol=lf
+
+# Binary assets must never be normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.onnx binary
+*.ort binary
+*.pt binary
+*.pth binary
+*.apk binary
+*.aab binary

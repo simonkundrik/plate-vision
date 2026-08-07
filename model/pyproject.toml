@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "platevision"
+version = "0.0.0"
+description = "On-device meal calorie estimation: training, evaluation, and ONNX export"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "../LICENSE" }
+
+# Core stays deliberately small. Contract and data-layer tests must run in CI without
+# pulling a multi-gigabyte torch wheel, so the heavy pieces live in extras below.
+dependencies = [
+    "numpy>=2.0",
+    "pillow>=11.0",
+]
+
+[project.optional-dependencies]
+train = [
+    "torch>=2.5",
+    "torchvision>=0.20",
+    "timm>=1.0.11",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+    "tqdm>=4.67",
+]
+export = [
+    "onnx>=1.17",
+    # Pinned to the same minor as onnxruntime-react-native so the exported artifact is
+    # guaranteed to load on Android. See runtime.pin_rationale in shared/model_meta.json.
+    "onnxruntime~=1.24.0",
+]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["platevision"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

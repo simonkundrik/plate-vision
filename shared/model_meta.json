@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "model_version": "0.0.0-scaffold",
+  "description": "Contract shared by the PyTorch exporter, the Android app, and the web demo. Every surface reads this file. Do not hardcode any of these values anywhere else.",
+
+  "input": {
+    "name": "image",
+    "dtype": "uint8",
+    "layout": "NHWC",
+    "shape": [1, "height", "width", 3],
+    "channel_order": "RGB",
+    "value_range": [0, 255],
+    "note": "Height and width are dynamic axes. Clients pass raw uint8 RGB pixels at any resolution and the graph resizes. Pre-resizing to roughly 256px on the short side is recommended to cut decode and transfer cost, but is not required for correctness."
+  },
+
+  "preprocessing": {
+    "location": "in_graph",
+    "rationale": "Resize, normalise, and the NHWC to NCHW transpose are compiled into the ONNX graph. Clients perform none of these steps. This removes the possibility of Python, Android, and browser preprocessing diverging, which is the most common silent failure mode for a model deployed across multiple runtimes.",
+    "resize": {
+      "height": 224,
+      "width": 224,
+      "mode": "bilinear",
+      "antialias": true
+    },
+    "normalize": {
+      "mean": [0.485, 0.456, 0.406],
+      "std": [0.229, 0.224, 0.225],
+      "note": "ImageNet statistics, applied after scaling to the 0..1 range. Listed for reference and for the parity test only. Clients must not apply these."
+    }
+  },
+
+  "outputs": {
+    "logits": {
+      "shape": [1, 101],
+      "dtype": "float32",
+      "description": "Unnormalised Food-101 class scores. Apply softmax client-side for confidences.",
+      "labels_file": "shared/food101_labels.json"
+    },
+    "nutrition_quantiles": {
+      "shape": [1, 5, 3],
+      "dtype": "float32",
+      "description": "Predicted quantiles per nutrition target. Axis 1 indexes targets, axis 2 indexes quantiles.",
+      "targets": [
+        { "key": "energy", "unit": "kcal" },
+        { "key": "protein", "unit": "g" },
+        { "key": "fat", "unit": "g" },
+        { "key": "carbohydrate", "unit": "g" },
+        { "key": "mass", "unit": "g" }
+      ],
+      "quantiles": [0.05, 0.5, 0.95],
+      "display_note": "The UI shows quantile index 1 as the central estimate and indices 0 and 2 as the bounds of a 90 percent interval. Whether that interval is genuinely calibrated is measured and reported, not assumed."
+    }
+  },
+
+  "runtime": {
+    "onnx_opset": 17,
+    "ort_version_pin": "1.24",
+    "pin_rationale": "onnxruntime-react-native lags onnxruntime-web. Both are pinned to the same minor and the export targets an opset the older package supports, so the identical artifact loads on Android and in the browser."
+  }
+}
