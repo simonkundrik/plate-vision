@@ -5,11 +5,16 @@ PyTorch training, evaluation, and ONNX export.
 ## Layout
 
 ```
-platevision/     package: contract loader, datasets, transforms, models, losses, training, export
+platevision/     package: contract, datasets, transforms, models, engine, checkpoints, export
 data/            dataset acquisition scripts (downloaded data is gitignored)
-notebooks/       Kaggle training notebooks
+scripts/         training entry points
+notebooks/       Kaggle notebooks, kept thin: they orchestrate, they do not implement
 tests/           unit tests, run in CI on every PR
 ```
+
+Notebooks call into `platevision` rather than defining logic inline. Notebook code cannot be
+linted usefully, cannot be unit tested, and invites editing the very thing you are trying to
+measure, so anything worth trusting lives in the package.
 
 ## Setup
 
