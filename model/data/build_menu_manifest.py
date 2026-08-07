@@ -44,6 +44,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--photos-per-item", type=int, default=PHOTOS_PER_ITEM)
     parser.add_argument("--delay", type=float, default=SECONDS_BETWEEN_REQUESTS)
     parser.add_argument("--api-key", help="overrides the environment; avoid on shared machines")
+    parser.add_argument(
+        "--allow-generic",
+        action="store_true",
+        help="keep records that are not the chain's own product. Off by default: a generic "
+        "croissant is about 170 kcal against a Starbucks one nearer 260, so a generic "
+        "figure on branded photos is a large error presented as ground truth.",
+    )
     args = parser.parse_args(argv)
 
     api_key, source = secrets.resolve_fdc_key(args.api_key)
@@ -60,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
 
     resolved: list[tuple[str, str, fdc.MenuItem]] = []
     unmatched: list[str] = []
+    generic: list[str] = []
+    seen_records: dict[int, str] = {}
 
     for index, (brand, item) in enumerate(seeds, 1):
         query = fdc.query_for(brand, item)
@@ -74,17 +83,33 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.delay)
             continue
 
-        record = fdc.parse_search(payload, query, item)
+        record = fdc.parse_search(
+            payload, query, item, brand=brand, require_brand=not args.allow_generic
+        )
         if record is None:
-            # No FNDDS record matched by name. Dropping it is the point: the top Survey
-            # result for an unmatched item is a different food with real calories.
-            print(f"  [{index}/{len(seeds)}] {query[:38]:40} no matching record")
+            # No FNDDS record matched, or the only match was a generic category average.
+            # Dropping it is the point: the nearest Survey result for an unmatched item is
+            # a different food carrying a real, plausible calorie figure.
+            print(f"  [{index}/{len(seeds)}] {query[:38]:40} no brand-specific record")
+            unmatched.append(query)
+        elif record.fdc_id in seen_records:
+            # Two menu items resolving to one record means at least one is mislabelled.
+            # Chipotle's burrito and burrito bowl both matched "Burrito bowl, chicken",
+            # and they are not the same food.
+            print(
+                f"  [{index}/{len(seeds)}] {query[:38]:40} duplicate of "
+                f"{seen_records[record.fdc_id]}"
+            )
             unmatched.append(query)
         else:
+            seen_records[record.fdc_id] = query
             resolved.append((brand, item, record))
+            if not record.brand_verified:
+                generic.append(query)
+            flag = "" if record.brand_verified else "  [generic]"
             print(
                 f"  [{index}/{len(seeds)}] {query[:38]:40} {record.kcal_per_item:6.0f} kcal "
-                f"({record.gram_weight:.0f}g)  {record.description[:34]}"
+                f"({record.gram_weight:.0f}g)  {record.description[:30]}{flag}"
             )
         time.sleep(args.delay)
 
@@ -136,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
             "Review before quoting any figure computed from this set."
         ),
         "items_resolved": len(resolved),
+        "items_brand_verified": sum(1 for _, _, r in resolved if r.brand_verified),
+        "items_generic": generic,
         "items_unmatched": unmatched,
         "images": entries,
     }

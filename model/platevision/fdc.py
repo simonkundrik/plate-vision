@@ -46,6 +46,11 @@ MIN_PLAUSIBLE_KCAL = 40.0
 MAX_PLAUSIBLE_KCAL = 2000.0
 
 
+# FDC marks generic entries "NFS" (Not Further Specified) or "NS as to". A record carrying
+# one of these is a category average, not a particular restaurant's product.
+GENERIC_MARKERS = ("nfs", "ns as to")
+
+
 @dataclass(frozen=True, slots=True)
 class MenuItem:
     query: str
@@ -56,9 +61,31 @@ class MenuItem:
     gram_weight: float
     portion_label: str
     kcal_per_item: float
+    brand_verified: bool
 
     def as_dict(self) -> dict:
         return asdict(self)
+
+
+def mentions_brand(description: str, brand: str) -> bool:
+    """Whether a record is the chain's own product rather than a generic category average.
+
+    This is what the whole approach rests on. The premise is that chain items are
+    standardised, so a photo of a Big Mac has known calories. That holds for
+    "Big Mac (McDonalds)" and collapses for "Croissant": a generic croissant is about
+    170 kcal where a Starbucks butter croissant is nearer 260, so labelling Starbucks
+    photos with the generic figure is a roughly 50 percent error presented as ground truth.
+
+    Note this is the opposite requirement from :func:`matches_item`, and both are needed.
+    Ignoring the brand while matching the item prevents a shared brand from rescuing a
+    mismatched food; requiring the brand separately prevents a generic food from
+    impersonating a branded one.
+    """
+    lowered = description.lower()
+    if any(marker in lowered for marker in GENERIC_MARKERS):
+        return False
+    brand_tokens = tokens_of(brand)
+    return bool(brand_tokens) and bool(brand_tokens & tokens_of(description))
 
 
 def energy_per_100g(food: dict) -> float | None:
@@ -140,7 +167,9 @@ def matches_item(description: str, item_name: str, threshold: float = 0.5) -> bo
     return len(wanted & found) / len(wanted) >= threshold
 
 
-def parse_search(payload: dict, query: str, item_name: str = "") -> MenuItem | None:
+def parse_search(
+    payload: dict, query: str, item_name: str = "", brand: str = "", require_brand: bool = False
+) -> MenuItem | None:
     """Turn one FDC search response into a per-item calorie record, or None.
 
     Returns None rather than a partial record whenever the energy value, the portion, the
@@ -169,6 +198,10 @@ def parse_search(payload: dict, query: str, item_name: str = "") -> MenuItem | N
     if not MIN_PLAUSIBLE_KCAL <= kcal_item <= MAX_PLAUSIBLE_KCAL:
         return None
 
+    verified = mentions_brand(food.get("description", ""), brand) if brand else False
+    if require_brand and not verified:
+        return None
+
     return MenuItem(
         query=query,
         fdc_id=int(food["fdcId"]),
@@ -178,6 +211,7 @@ def parse_search(payload: dict, query: str, item_name: str = "") -> MenuItem | N
         gram_weight=grams,
         portion_label=label,
         kcal_per_item=round(kcal_item, 1),
+        brand_verified=verified,
     )
 
 
