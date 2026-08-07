@@ -71,3 +71,7 @@ kaggle.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Dry-run manifests from `build_ood_manifest.py --classes N`. Only the full manifest
+# and its review sample are tracked.
+model/data/ood/sample*.json
