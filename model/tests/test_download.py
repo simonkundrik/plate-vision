@@ -39,6 +39,34 @@ def test_fetch_returns_body(monkeypatch):
     assert download.fetch("http://x") == b"hi"
 
 
+def test_fetch_identifies_itself(monkeypatch):
+    """Openverse answers 403 to urllib's default agent, and that reads like an auth or
+    licensing failure rather than a missing header."""
+    captured = {}
+
+    def capture(request, *_a, **_k):
+        captured["agent"] = request.get_header("User-agent")
+        return FakeResponse(b"ok")
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", capture)
+    download.fetch("http://x")
+
+    assert "plate-vision" in captured["agent"]
+
+
+def test_fetch_allows_extra_headers(monkeypatch):
+    captured = {}
+
+    def capture(request, *_a, **_k):
+        captured["accept"] = request.get_header("Accept")
+        return FakeResponse(b"ok")
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", capture)
+    download.fetch("http://x", headers={"Accept": "application/json"})
+
+    assert captured["accept"] == "application/json"
+
+
 def test_fetch_retries_transient_failures(monkeypatch):
     calls = []
 

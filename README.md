@@ -51,6 +51,7 @@ a projection.
 |---|---|---|
 | Food-101 top-1 | 85%+ | **86.12%** |
 | Food-101 top-5 | | **96.90%** |
+| Top-1 on out-of-distribution photos | | **59.21%** (see caveat below) |
 | Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | TBD |
 | Calorie MAE, personal weighed-meal set | reported honestly, expected to be worse | TBD |
 | 90% interval coverage | 90% (+/- 3pp) | TBD |
@@ -72,6 +73,34 @@ first. It is the headroom the training recipe exists to close, and it is now a m
 rather than an assumption. Throughput was roughly 195 images per second, well below what a T4
 manages on this model, so the run was bound by JPEG decode and augmentation on four vCPUs rather
 than by the GPU.
+
+### The 27-point drop on real-world photos
+
+Food-101's test split is drawn from the same curated pool as its training data. Measured
+against 2,008 Creative Commons photos taken by strangers with ordinary cameras, the same
+model scores **59.21% top-1** (76.49% top-5) rather than 86.12%.
+
+```
+      86.12%   Food-101 test split
+      59.21%   Creative Commons photos
+      -26.91   points
+```
+
+The per-class breakdown is consistent with an honest reading rather than random collapse.
+Visually distinctive composed dishes survive: spaghetti carbonara 100%, croque madame 95%,
+paella and bibimbap 90%. Generic or ambiguous ones fall apart: omelette 21%, cheesecake 32%,
+hot dog 35%, macaroni and cheese 35%.
+
+**This figure is an upper bound on the true degradation.** The OOD labels come from search
+terms, not from anyone inspecting the images, so some of the 27 points is wrong labels
+rather than model error. `data/ood/manifest_review_sample.json` holds 100 randomly selected
+images for hand-checking; reviewing them turns this into a number with an error bar. Until
+that happens the honest claim is "somewhere between a meaningful drop and 27 points", not
+27 points.
+
+The set is defined by a tracked manifest of URLs and attribution rather than committed
+images, so the repository redistributes nothing. All entries are CC BY, CC BY-SA, CC0, or
+public domain, filtered for commercial use and modification.
 
 ### On the int8 numbers
 

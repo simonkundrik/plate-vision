@@ -3,6 +3,9 @@
 model/data/food101/
 model/data/nutrition5k/
 model/data/personal/
+# Downloaded OOD images are not redistributed. The manifest that defines the set is
+# tracked; the photos it points at stay out of a public repository.
+model/data/ood/images/
 *.pt
 *.pth
 *.ckpt

@@ -158,6 +158,55 @@ def test_food101_rejects_malformed_entry(food101_root):
         datasets.build_food101_index(food101_root, "train")
 
 
+# --- out-of-distribution set ------------------------------------------------------
+
+
+@pytest.fixture
+def ood_tree(tmp_path):
+    import json
+
+    root = tmp_path / "ood"
+    images = root / "images"
+    (images / "pizza").mkdir(parents=True)
+    Image.new("RGB", (8, 8)).save(images / "pizza" / "aaa.jpg")
+
+    manifest = {
+        "schema_version": 1,
+        "classes_queried": 101,
+        "label_quality": "weak",
+        "images": [
+            {"class_key": "pizza", "label": 76, "identifier": "aaa", "url": "https://x/a.jpg"},
+            {"class_key": "pizza", "label": 76, "identifier": "bbb", "url": "https://x/b.jpg"},
+        ],
+    }
+    path = root / "manifest.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path, images
+
+
+def test_ood_index_skips_entries_not_on_disk(ood_tree):
+    """Link rot is expected on third-party hosts, so the count is returned rather than
+    surfacing later as an image-load crash partway through evaluation."""
+    manifest, images = ood_tree
+    samples, missing = datasets.build_ood_index(manifest, images)
+
+    assert len(samples) == 1
+    assert missing == 1
+    assert samples[0].label == 76
+
+
+def test_ood_index_label_matches_the_committed_class_ordering(ood_tree):
+    """The manifest stores the index from shared/food101_labels.json. If it drifted from
+    the ordering the model was trained under, every OOD prediction would be scored against
+    the wrong class and the measured drop would be meaningless."""
+    from platevision import food101
+
+    manifest, images = ood_tree
+    samples, _ = datasets.build_ood_index(manifest, images)
+
+    assert samples[0].label == food101.class_keys().index("pizza")
+
+
 def test_food101_skips_blank_lines(food101_root):
     (food101_root / "meta" / "train.txt").write_text(
         "apple_pie/1\n\n  \nwaffles/2\n", encoding="utf-8"
