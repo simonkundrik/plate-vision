@@ -66,6 +66,7 @@ playwright-report/
 kaggle.json
 
 # Editors and OS
+.claude/
 .vscode/
 .idea/
 .DS_Store
