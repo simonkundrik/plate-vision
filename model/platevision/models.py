@@ -96,6 +96,44 @@ class NutritionModel(nn.Module):
         return self.head(features).view(-1, self.num_targets, self.num_quantiles)
 
 
+class CombinedModel(nn.Module):
+    """One backbone, two heads: Food-101 logits and nutrition quantiles.
+
+    The contract declares a single model with both outputs, so the app downloads and runs
+    one artifact rather than two.
+
+    This is only valid if both heads were fitted against *this* backbone. Nutrition
+    training fine-tunes the backbone, which invalidates the classification head from stage
+    one, so that head is re-fitted as a linear probe on the final frozen backbone before
+    this is assembled. Skipping that step produces a model whose logits are confidently
+    wrong while its nutrition outputs are fine, and nothing about the export would say so.
+    """
+
+    def __init__(
+        self,
+        backbone: nn.Module,
+        classifier_head: nn.Module,
+        nutrition_head: nn.Module,
+        *,
+        num_targets: int,
+        num_quantiles: int,
+        drop_rate: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.backbone = backbone
+        self.classifier_head = classifier_head
+        self.nutrition_head = nutrition_head
+        self.num_targets = num_targets
+        self.num_quantiles = num_quantiles
+        self.dropout = nn.Dropout(drop_rate)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        features = self.dropout(self.backbone(x))
+        logits = self.classifier_head(features)
+        nutrition = self.nutrition_head(features).view(-1, self.num_targets, self.num_quantiles)
+        return logits, nutrition
+
+
 def load_backbone_weights(
     model: NutritionModel, classifier_state: dict[str, torch.Tensor]
 ) -> tuple[int, int]:
