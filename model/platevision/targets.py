@@ -74,20 +74,56 @@ class TargetTransform:
 
         return cls(mean=tuple(means), std=tuple(stds), keys=tuple(keys))
 
+    def _aligned(self, stats: tuple[float, ...], like):
+        """Shape per-target statistics to broadcast against ``like``.
+
+        Three ranks occur:
+
+        ``(targets,)`` is one sample's labels, applied by the Dataset per item.
+
+        ``(batch, targets)`` is a batch of labels. Both align to the last axis.
+
+        ``(batch, targets, quantiles)`` are quantile predictions, so the statistics align
+        to axis 1 and must be unsqueezed. Left to broadcast, a 5-target 3-quantile tensor
+        raises; with 3 targets and 3 quantiles it would broadcast happily and silently
+        un-transform along the wrong axis, which is why this is checked rather than left
+        to numpy-style rules.
+        """
+        import torch
+
+        tensor = torch.as_tensor(stats, dtype=like.dtype, device=like.device)
+        if like.ndim in (1, 2):
+            if like.shape[-1] != len(stats):
+                raise ValueError(
+                    f"expected {len(stats)} targets on the last axis, got {tuple(like.shape)}"
+                )
+            return tensor
+        if like.ndim == 3:
+            if like.shape[1] != len(stats):
+                raise ValueError(
+                    f"expected {len(stats)} targets on axis 1, got {tuple(like.shape)}"
+                )
+            return tensor.unsqueeze(-1)
+        raise ValueError(f"expected a rank 1, 2, or 3 tensor, got {tuple(like.shape)}")
+
     def forward(self, targets):
         """Raw units to standardised log space."""
         import torch
 
-        mean = torch.as_tensor(self.mean, dtype=targets.dtype, device=targets.device)
-        std = torch.as_tensor(self.std, dtype=targets.dtype, device=targets.device)
+        mean = self._aligned(self.mean, targets)
+        std = self._aligned(self.std, targets)
         return (torch.log1p(targets) - mean) / std
 
     def inverse(self, values):
-        """Standardised log space back to raw units."""
+        """Standardised log space back to raw units.
+
+        Accepts both labels and quantile predictions, which is why the statistics are
+        aligned by rank rather than left to broadcast.
+        """
         import torch
 
-        mean = torch.as_tensor(self.mean, dtype=values.dtype, device=values.device)
-        std = torch.as_tensor(self.std, dtype=values.dtype, device=values.device)
+        mean = self._aligned(self.mean, values)
+        std = self._aligned(self.std, values)
         return torch.expm1(values * std + mean)
 
     def to_dict(self) -> dict[str, Any]:

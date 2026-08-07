@@ -78,6 +78,65 @@ def test_zero_is_representable():
     assert torch.allclose(t.inverse(t.forward(zeros)), zeros, atol=1e-4)
 
 
+def test_inverse_handles_quantile_predictions():
+    """Predictions are (batch, targets, quantiles), labels are (batch, targets). The
+    per-target statistics have to align to different axes for each."""
+    t = TargetTransform.fit(rows())
+    predictions = torch.zeros(4, WIDTH, 3)
+
+    inverted = t.inverse(predictions)
+
+    assert inverted.shape == (4, WIDTH, 3)
+    # A standardised zero maps back to expm1(mean) for that target, identically across
+    # the quantile axis.
+    for target in range(WIDTH):
+        expected = math.expm1(t.mean[target])
+        assert inverted[0, target, 0].item() == pytest.approx(expected, rel=1e-4)
+        assert inverted[0, target, 2].item() == pytest.approx(expected, rel=1e-4)
+
+
+def test_inverse_applies_per_target_statistics_along_the_target_axis():
+    """The bug this guards: broadcasting the statistics onto the quantile axis instead.
+    With equal target and quantile counts it would not even raise."""
+    t = TargetTransform(mean=(0.0, 5.0, 0.0), std=(1.0, 1.0, 1.0), keys=("a", "b", "c"))
+    predictions = torch.zeros(1, 3, 3)
+
+    inverted = t.inverse(predictions)
+
+    assert inverted[0, 0, 0].item() == pytest.approx(math.expm1(0.0), abs=1e-5)
+    assert inverted[0, 1, 0].item() == pytest.approx(math.expm1(5.0), rel=1e-4)
+    assert inverted[0, 1, 2].item() == pytest.approx(math.expm1(5.0), rel=1e-4)
+
+
+def test_round_trip_holds_for_quantile_shaped_tensors():
+    t = TargetTransform.fit(rows())
+    raw = torch.rand(4, WIDTH, 3) * 500
+    assert torch.allclose(t.inverse(t.forward(raw)), raw, rtol=1e-3, atol=1e-2)
+
+
+def test_wrong_target_count_is_rejected():
+    t = TargetTransform.fit(rows())
+    with pytest.raises(ValueError, match="expected 5 targets"):
+        t.inverse(torch.zeros(4, 2))
+
+
+def test_single_sample_targets_are_supported():
+    """The Dataset applies the transform per item, so it passes a rank-1 tensor."""
+    t = TargetTransform.fit(rows())
+    single = torch.tensor(rows(1)[0], dtype=torch.float32)
+
+    transformed = t.forward(single)
+
+    assert transformed.shape == (WIDTH,)
+    assert torch.allclose(t.inverse(transformed), single, rtol=1e-3, atol=1e-2)
+
+
+def test_unsupported_rank_is_rejected():
+    t = TargetTransform.fit(rows())
+    with pytest.raises(ValueError, match="rank 1, 2, or 3"):
+        t.inverse(torch.zeros(2, WIDTH, 3, 1))
+
+
 def test_fit_rejects_empty_input():
     with pytest.raises(ValueError, match="zero samples"):
         TargetTransform.fit([])
