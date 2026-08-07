@@ -47,6 +47,13 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# Notebooks are linted and formatted like everything else, because undefined names and
+# unused imports matter just as much there. Two exceptions, both notebook idioms rather
+# than defects: imports belong in the cell that needs them, and a one-line read of a
+# results file does not warrant a context manager.
+"notebooks/*.ipynb" = ["E402", "SIM115"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
