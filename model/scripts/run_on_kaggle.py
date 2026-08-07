@@ -90,7 +90,19 @@ def watch(kernel_id: str, poll_seconds: int) -> str:
     )
     while True:
         result = kaggle_cli("kernels", "status", kernel_id, check=False)
-        status = kaggle_run.parse_status(result.stdout + result.stderr)
+        combined = result.stdout + result.stderr
+
+        # Without this the loop polls forever: an auth failure parses as "unknown", which
+        # is deliberately non-terminal, so it would wait indefinitely on a call that can
+        # never succeed.
+        if kaggle_run.looks_like_auth_failure(combined):
+            raise SystemExit(
+                "Kaggle rejected the request. Your session has most likely expired.\n"
+                "Run `kaggle auth login` and try again.\n"
+                f"Raw response: {combined.strip()[:200]}"
+            )
+
+        status = kaggle_run.parse_status(combined)
         stamp = time.strftime("%H:%M:%S")
         print(f"  [{stamp}] {status}")
         if kaggle_run.is_terminal(status):

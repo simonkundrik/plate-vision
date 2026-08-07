@@ -18,6 +18,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from platevision.mixing import MixingPolicy, mixed_criterion
+
 
 @dataclass(slots=True)
 class AverageMeter:
@@ -44,19 +46,27 @@ class EpochResult:
     top5: float
     seconds: float
     lr: float = 0.0
+    resolution: int = 0
+    # Recorded because top-1 on a mixed batch is not comparable to evaluation top-1: the
+    # input is a blend of two images, so there is no single right answer. Without this
+    # flag in the history, an ablation table silently compares different quantities.
+    mixed: bool = False
 
     def as_dict(self) -> dict:
         return asdict(self)
 
     def format(self) -> str:
+        top1 = f"{self.top1:6.2f}%" + ("*" if self.mixed else " ")
         line = (
             f"epoch {self.epoch:>3} {self.split:<5} "
-            f"loss {self.loss:.4f}  top1 {self.top1:6.2f}%  top5 {self.top5:6.2f}%  "
+            f"loss {self.loss:.4f}  top1 {top1}  top5 {self.top5:6.2f}%  "
         )
         # Evaluation has no optimiser, so its lr is structurally zero. Printing it reads
         # like the schedule collapsed mid-epoch, which is exactly the bug people look for.
         if self.split == "train":
             line += f"lr {self.lr:.2e}  "
+            if self.resolution:
+                line += f"res {self.resolution}  "
         return line + f"{self.seconds:.1f}s"
 
 
@@ -148,15 +158,24 @@ def train_one_epoch(
     scaler=None,
     max_grad_norm: float | None = None,
     log_every: int = 0,
+    mixing: MixingPolicy | None = None,
+    ema=None,
+    resolution: int = 0,
 ) -> EpochResult:
     model.train()
     loss_meter, top1_meter, top5_meter = AverageMeter(), AverageMeter(), AverageMeter()
     started = time.perf_counter()
     amp_enabled = scaler is not None and scaler.is_enabled()
+    any_mixed = False
 
     for step, (images, targets) in enumerate(loader):
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+
+        mix = mixing(images, targets) if mixing is not None else None
+        if mix is not None:
+            images = mix.images
+            any_mixed = True
 
         # Zero before the forward pass, not after the step, so an exception mid-epoch
         # cannot leave stale gradients to be silently applied on the next iteration.
@@ -164,7 +183,7 @@ def train_one_epoch(
 
         with torch.amp.autocast(device_type=device.type, enabled=amp_enabled):
             outputs = model(images)
-            loss = criterion(outputs, targets)
+            loss = mixed_criterion(criterion, outputs, mix) if mix else criterion(outputs, targets)
 
         if scaler is not None:
             scaler.scale(loss).backward()
@@ -181,11 +200,17 @@ def train_one_epoch(
                 nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             optimizer.step()
 
+        # After the optimiser step, never before: averaging the pre-step weights lags the
+        # live model by exactly one update and quietly weakens the average.
+        if ema is not None:
+            ema.update(model)
+
         if scheduler is not None:
             scheduler.step()
 
         batch = targets.size(0)
-        top1, top5 = accuracy(outputs.detach().float(), targets, topk=(1, 5))
+        scored_against = mix.dominant_target if mix else targets
+        top1, top5 = accuracy(outputs.detach().float(), scored_against, topk=(1, 5))
         loss_meter.update(loss.item(), batch)
         top1_meter.update(top1, batch)
         top5_meter.update(top5, batch)
@@ -204,6 +229,8 @@ def train_one_epoch(
         top5=top5_meter.mean,
         seconds=time.perf_counter() - started,
         lr=optimizer.param_groups[0]["lr"],
+        resolution=resolution,
+        mixed=any_mixed,
     )
 
 

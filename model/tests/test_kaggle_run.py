@@ -208,6 +208,42 @@ def test_non_terminal_states_keep_polling(status):
     assert not kaggle_run.is_terminal(status)
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Authentication required to call the Kaggle API.",
+        "Cannot access kernel 'a/b' (Permission 'kernels.get' was denied). The most "
+        "likely cause is a wrong kernel slug.",
+        "401 Client Error: Unauthorized",
+    ],
+)
+def test_auth_failures_are_recognised(raw):
+    """An expired session surfaces differently per endpoint, and `kernels status` actively
+    misdiagnoses it as a wrong slug. All of these mean: log in again."""
+    assert kaggle_run.looks_like_auth_failure(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        'Kernel is complete: "someone/run"',
+        "Kernel has status running",
+        "Kernel error encountered",
+    ],
+)
+def test_normal_responses_are_not_mistaken_for_auth_failures(raw):
+    assert not kaggle_run.looks_like_auth_failure(raw)
+
+
+def test_an_auth_failure_is_not_a_terminal_status():
+    """It parses as 'unknown', which is non-terminal, so the watch loop would poll
+    forever on a call that can never succeed. That is why it is detected separately."""
+    raw = "Authentication required to call the Kaggle API."
+    assert kaggle_run.parse_status(raw) == "unknown"
+    assert not kaggle_run.is_terminal(kaggle_run.parse_status(raw))
+    assert kaggle_run.looks_like_auth_failure(raw)
+
+
 def test_module_does_not_import_the_kaggle_package():
     """`import kaggle` authenticates at import time and raises without credentials.
     Importing it here would make the package unimportable in CI."""

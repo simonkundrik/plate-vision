@@ -117,6 +117,23 @@ def parse_config_username(raw: str) -> str | None:
     return None if value.lower() == "none" else value
 
 
+# An expired OAuth session does not report itself as an auth problem on every endpoint.
+# `kernels status` renders it as a permission error and then volunteers a wrong diagnosis
+# ("most likely cause is a wrong kernel slug"), which sends you looking for a naming bug
+# that does not exist. These markers catch it wherever it surfaces.
+AUTH_FAILURE_MARKERS = (
+    "authentication required",
+    "permission 'kernels.get' was denied",
+    "unauthorized",
+    "401 client error",
+)
+
+
+def looks_like_auth_failure(raw: str) -> bool:
+    lowered = raw.lower()
+    return any(marker in lowered for marker in AUTH_FAILURE_MARKERS)
+
+
 def parse_status(raw: str) -> str:
     """Pull the status word out of ``kaggle kernels status`` output.
 
