@@ -34,6 +34,18 @@ def validate_slug(slug: str) -> str:
     return slug
 
 
+def slugify(title: str) -> str:
+    """Reproduce how Kaggle derives a kernel slug from its title.
+
+    This matters more than it looks. Kaggle builds the published URL from the *title*,
+    not from the id in kernel-metadata.json. Push a title that slugifies to something
+    other than your declared slug and the kernel is created under the title's slug, while
+    every subsequent status and output call using the declared slug fails with a
+    permission error that reads like an auth problem.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+
+
 def build_kernel_metadata(
     *,
     username: str,
@@ -57,6 +69,15 @@ def build_kernel_metadata(
     resolved_title = title or slug.replace("-", " ")
     if len(resolved_title) < MIN_TITLE_LENGTH:
         raise ValueError(f"title {resolved_title!r} is shorter than {MIN_TITLE_LENGTH} characters")
+
+    derived = slugify(resolved_title)
+    if derived != slug:
+        raise ValueError(
+            f"title {resolved_title!r} slugifies to {derived!r}, which does not match the "
+            f"declared slug {slug!r}. Kaggle would publish the kernel at {derived!r} and "
+            f"every later status or output call on {slug!r} would fail. "
+            f"Use --slug {derived} or drop --title to derive it from the slug."
+        )
 
     return {
         "id": f"{username}/{slug}",

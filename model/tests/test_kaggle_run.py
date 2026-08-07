@@ -52,6 +52,63 @@ def test_title_defaults_from_the_slug():
     assert meta["title"] == "plate vision baseline"
 
 
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("plate-vision Food-101 baseline", "plate-vision-food-101-baseline"),
+        ("plate vision baseline", "plate-vision-baseline"),
+        ("  Trailing and leading  ", "trailing-and-leading"),
+        ("Lots___of   separators!!!", "lots-of-separators"),
+    ],
+)
+def test_slugify_matches_kaggle(title, expected):
+    assert kaggle_run.slugify(title) == expected
+
+
+def test_title_that_slugifies_elsewhere_is_rejected():
+    """The regression this exists for, found by pushing a real run.
+
+    Kaggle builds the published URL from the title, not from the id in the metadata. A
+    title slugifying to something else creates the kernel under that other slug, and every
+    later status call on the declared slug fails with a permission error that reads like
+    an authentication problem rather than a naming one.
+    """
+    with pytest.raises(ValueError, match="slugifies to"):
+        kaggle_run.build_kernel_metadata(
+            username="someone",
+            slug="plate-vision-baseline",
+            code_file="nb.ipynb",
+            title="plate-vision Food-101 baseline",
+        )
+
+
+def test_a_consistent_explicit_title_is_accepted():
+    meta = kaggle_run.build_kernel_metadata(
+        username="someone",
+        slug="plate-vision-baseline",
+        code_file="nb.ipynb",
+        title="Plate Vision Baseline",
+    )
+    assert meta["title"] == "Plate Vision Baseline"
+
+
+@pytest.mark.parametrize("slug", ["plate-vision-baseline", "a-b-c-d-e", "teacher-run-v2"])
+def test_the_default_title_always_round_trips(slug):
+    """Deriving the title from the slug cannot produce a mismatch, by construction."""
+    meta = kaggle_run.build_kernel_metadata(username="someone", slug=slug, code_file="nb.ipynb")
+    assert kaggle_run.slugify(meta["title"]) == slug
+
+
+def test_a_slug_too_short_to_make_a_valid_title_is_rejected():
+    """`run1` is a legal slug but derives a 4-character title, which Kaggle refuses.
+
+    Caught by the round-trip test above rather than by a real push, which is the cheaper
+    place to find it.
+    """
+    with pytest.raises(ValueError, match="shorter than"):
+        kaggle_run.build_kernel_metadata(username="someone", slug="run1", code_file="nb.ipynb")
+
+
 def test_short_titles_are_rejected():
     """Kaggle rejects these server-side, after the upload."""
     with pytest.raises(ValueError, match="shorter than"):
