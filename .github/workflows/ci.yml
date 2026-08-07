@@ -29,11 +29,13 @@ jobs:
           cache: pip
           cache-dependency-path: model/pyproject.toml
 
-      # Only the core and dev extras. Training and export wheels are deliberately
-      # excluded so this job stays fast; the export parity job installs them separately
-      # once there is a model to export (PR #11).
+      # CPU-only wheels from PyTorch's own index. The default PyPI torch wheel drags in
+      # CUDA libraries the runner cannot use and turns a cold cache into gigabytes.
+      - name: Install torch (CPU)
+        run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,train]"
 
       - name: Lint
         run: ruff check --output-format=github .
