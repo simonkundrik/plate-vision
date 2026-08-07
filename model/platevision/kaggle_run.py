@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+CONFIG_USERNAME_PATTERN = re.compile(r"^\s*-\s*username:\s*(\S+)\s*$", re.MULTILINE)
 
 # P100 is offered by Kaggle but does not work with the default image: the preinstalled
 # torch build is not compatible with it. T4 is also the better choice here regardless,
@@ -79,6 +80,20 @@ def write_kernel_metadata(directory: Path, metadata: dict[str, Any]) -> Path:
     path = directory / "kernel-metadata.json"
     path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def parse_config_username(raw: str) -> str | None:
+    """Pull the username out of ``kaggle config view`` output.
+
+    The OAuth flow writes ``credentials.json`` rather than the legacy ``kaggle.json``, so
+    there is no username field to read off disk. ``config view`` prints configuration
+    values only and contains no token, which is why it is safe to parse and safe to log.
+    """
+    match = CONFIG_USERNAME_PATTERN.search(raw)
+    if not match:
+        return None
+    value = match.group(1)
+    return None if value.lower() == "none" else value
 
 
 def parse_status(raw: str) -> str:
