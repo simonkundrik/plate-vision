@@ -11,6 +11,10 @@ model/data/personal/
 *.pte
 *.tflite
 
+# Kaggle run staging (assembled by scripts/run_on_kaggle.py) and credentials
+.kaggle-staging/
+.kaggle/
+
 # Training outputs
 runs/
 outputs/
