@@ -17,57 +17,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from platevision import download as dl
 from platevision import nutrition5k as n5k
 
-BUCKET_API = "https://storage.googleapis.com/storage/v1/b/nutrition5k_dataset/o"
-OVERHEAD_PREFIX = "nutrition5k_dataset/imagery/realsense_overhead/"
-
 DEFAULT_OUT = Path(__file__).resolve().parent / "nutrition5k"
-RETRIES = 3
-RETRY_BACKOFF_S = 2.0
-
-
-def fetch(url: str, retries: int = RETRIES) -> bytes:
-    """GET with a small retry, since a few thousand requests will hit transient failures."""
-    last: Exception | None = None
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(url, timeout=60) as resp:  # noqa: S310
-                return resp.read()
-        except (urllib.error.URLError, TimeoutError) as exc:
-            last = exc
-            if attempt < retries - 1:
-                time.sleep(RETRY_BACKOFF_S * (attempt + 1))
-    raise RuntimeError(f"failed after {retries} attempts: {url}") from last
-
-
-def iter_overhead_objects() -> Iterator[tuple[str, int]]:
-    """Yield (object_name, size_bytes) for everything under the overhead imagery prefix."""
-    token: str | None = None
-    while True:
-        params = {
-            "prefix": OVERHEAD_PREFIX,
-            "maxResults": "1000",
-            "fields": "items(name,size),nextPageToken",
-        }
-        if token:
-            params["pageToken"] = token
-        payload = json.loads(fetch(f"{BUCKET_API}?{urllib.parse.urlencode(params)}"))
-        for item in payload.get("items", []):
-            yield item["name"], int(item["size"])
-        token = payload.get("nextPageToken")
-        if not token:
-            return
 
 
 def human(num_bytes: float) -> str:
@@ -81,7 +38,7 @@ def human(num_bytes: float) -> str:
 def load_metadata() -> dict[str, n5k.Dish]:
     dishes: dict[str, n5k.Dish] = {}
     for name in n5k.METADATA_FILES:
-        text = fetch(n5k.metadata_url(name)).decode("utf-8")
+        text = dl.fetch(n5k.metadata_url(name)).decode("utf-8")
         parsed = n5k.parse_dish_metadata(text)
         overlap = dishes.keys() & parsed.keys()
         if overlap:
@@ -94,7 +51,7 @@ def load_metadata() -> dict[str, n5k.Dish]:
 def load_splits() -> dict[str, list[str]]:
     splits = {}
     for name in n5k.SPLIT_FILES:
-        ids = n5k.parse_split_ids(fetch(n5k.split_url(name)).decode("utf-8"))
+        ids = n5k.parse_split_ids(dl.fetch(n5k.split_url(name)).decode("utf-8"))
         splits[name] = ids
         print(f"  {name}: {len(ids):,} ids")
     return splits
@@ -122,11 +79,12 @@ def report() -> int:
     print("\nImagery (overhead)")
     rgb_bytes = rgb_count = other_bytes = other_count = 0
     have_rgb: set[str] = set()
-    for name, size in iter_overhead_objects():
-        if name.endswith("/rgb.png"):
+    for name, size in dl.iter_overhead_objects():
+        dish_id = dl.dish_id_from_object(name)
+        if dish_id:
             rgb_bytes += size
             rgb_count += 1
-            have_rgb.add(name.removeprefix(OVERHEAD_PREFIX).removesuffix("/rgb.png"))
+            have_rgb.add(dish_id)
         else:
             other_bytes += size
             other_count += 1
@@ -184,16 +142,26 @@ def download(out: Path, limit: int | None, workers: int, force: bool) -> int:
 
     print("Metadata and splits")
     for name in n5k.METADATA_FILES:
-        (out / "metadata" / name).write_bytes(fetch(n5k.metadata_url(name)))
+        (out / "metadata" / name).write_bytes(dl.fetch(n5k.metadata_url(name)))
         print(f"  {name}")
-    ids: list[str] = []
+    requested: list[str] = []
     for name in n5k.SPLIT_FILES:
-        raw = fetch(n5k.split_url(name))
+        raw = dl.fetch(n5k.split_url(name))
         (out / "splits" / name).write_bytes(raw)
-        ids.extend(n5k.parse_split_ids(raw.decode("utf-8")))
+        requested.extend(n5k.parse_split_ids(raw.decode("utf-8")))
         print(f"  {name}")
 
-    ids = sorted(set(ids))
+    # The split files list ids the overhead camera never captured. Asking for those is a
+    # guaranteed 404 each, so the bucket is listed once up front and the request set is
+    # intersected with what exists rather than discovering absence one request at a time.
+    print("\nChecking which dishes have an overhead frame")
+    available = dl.available_dish_ids()
+    requested_unique = sorted(set(requested))
+    ids = [d for d in requested_unique if d in available]
+    print(f"  ids in splits:               {len(requested_unique):,}")
+    print(f"  with an overhead frame:      {len(ids):,}")
+    print(f"  skipped, no overhead frame:  {len(requested_unique) - len(ids):,}")
+
     if limit:
         ids = ids[:limit]
     print(f"\nImagery: {len(ids):,} dishes into {imagery}")
@@ -220,12 +188,14 @@ def download(out: Path, limit: int | None, workers: int, force: bool) -> int:
 
 
 def _fetch_one(imagery: Path, dish_id: str) -> None:
+    # Fetch before creating anything on disk, so a failure leaves no empty directory
+    # behind. Write through a .part name so an interrupted run cannot leave a truncated
+    # PNG that a later resume would treat as already downloaded.
+    data = dl.fetch(n5k.rgb_url(dish_id))
     dest = imagery / dish_id / "rgb.png"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    # Write to a temp name first so an interrupted run never leaves a truncated PNG
-    # that a later resume would treat as already downloaded.
     tmp = dest.with_suffix(".png.part")
-    tmp.write_bytes(fetch(n5k.rgb_url(dish_id)))
+    tmp.write_bytes(data)
     tmp.replace(dest)
 
 
