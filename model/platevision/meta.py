@@ -16,6 +16,11 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 META_PATH = REPO_ROOT / "shared" / "model_meta.json"
 
+# The only preprocessing order this codebase implements. Both the training eval transform
+# and the ONNX exporter are written against it, so an edit to the contract that nothing
+# implements should fail loudly rather than silently disagree with the deployed graph.
+SUPPORTED_PREPROCESSING_ORDER = ("to_float_unit_range", "resize", "normalize")
+
 
 @lru_cache(maxsize=1)
 def load_meta(path: Path | None = None) -> dict[str, Any]:
@@ -35,6 +40,13 @@ def load_meta(path: Path | None = None) -> dict[str, Any]:
 def _validate(meta: dict[str, Any]) -> None:
     if meta.get("schema_version") != 1:
         raise ValueError(f"unsupported schema_version: {meta.get('schema_version')!r}")
+
+    order = tuple(meta["preprocessing"]["order"])
+    if order != SUPPORTED_PREPROCESSING_ORDER:
+        raise ValueError(
+            f"preprocessing order {order} is not implemented; "
+            f"only {SUPPORTED_PREPROCESSING_ORDER} is"
+        )
 
     norm = meta["preprocessing"]["normalize"]
     if len(norm["mean"]) != 3 or len(norm["std"]) != 3:
@@ -76,3 +88,8 @@ def normalization() -> tuple[list[float], list[float]]:
     """ImageNet (mean, std). Baked into the exported graph; clients never apply these."""
     norm = load_meta()["preprocessing"]["normalize"]
     return list(norm["mean"]), list(norm["std"])
+
+
+def preprocessing_order() -> tuple[str, ...]:
+    """The sequence the eval transform and the exported graph must both follow."""
+    return tuple(load_meta()["preprocessing"]["order"])

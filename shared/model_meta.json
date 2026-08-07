@@ -16,6 +16,8 @@
   "preprocessing": {
     "location": "in_graph",
     "rationale": "Resize, normalise, and the NHWC to NCHW transpose are compiled into the ONNX graph. Clients perform none of these steps. This removes the possibility of Python, Android, and browser preprocessing diverging, which is the most common silent failure mode for a model deployed across multiple runtimes.",
+    "order": ["to_float_unit_range", "resize", "normalize"],
+    "order_rationale": "Order is part of the contract because it changes the pixels. Resizing uint8 and then converting to float rounds at a different point than converting first and resizing in float, and bilinear interpolation is not invariant to that difference. The training eval transform and the exported graph must apply these in exactly this sequence, or the reported metrics will not describe the model that ships.",
     "resize": {
       "height": 224,
       "width": 224,

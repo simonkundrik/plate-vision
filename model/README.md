@@ -13,16 +13,19 @@ tests/           unit tests, run in CI on every PR
 
 ## Setup
 
-Core install is deliberately light so contract and data tests run fast in CI:
+There is no NVIDIA GPU on the development machine, so install the CPU-only torch wheels
+first. The default PyPI wheel pulls CUDA libraries that are several gigabytes of dead
+weight here:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -e ".[dev,train,export]"
+```
+
+The contract-only subset, if you just want to run the fast tests:
 
 ```bash
 pip install -e ".[dev]"
-```
-
-Training and export pull heavier wheels and are opt-in:
-
-```bash
-pip install -e ".[dev,train,export]"
 ```
 
 ## Where training runs
