@@ -44,17 +44,42 @@ Python, Android, and browser preprocessing to silently diverge.
 
 ## Results
 
-Not yet measured. This table is the contract the project is held to, and it gets filled in with real
-numbers as the work lands. Nothing here is a projection.
+Filled in as the work lands. Anything still reading TBD has not been measured, and nothing here is
+a projection.
 
 | Metric | Target | Measured |
 |---|---|---|
-| Food-101 top-1 | 85%+ | TBD |
+| Food-101 top-1 | 85%+ | **86.12%** |
+| Food-101 top-5 | | **96.90%** |
 | Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | TBD |
 | Calorie MAE, personal weighed-meal set | reported honestly, expected to be worse | TBD |
 | 90% interval coverage | 90% (+/- 3pp) | TBD |
-| Model size, int8 | under 10 MB | TBD |
+| Model size, int8 | under 10 MB | **5.24 MB** (from 16.48 MB fp32) |
 | Inference p95, mid-range Android | under 100 ms | TBD |
+
+### Baseline run
+
+EfficientNet-B0, 30 epochs, plain cross-entropy with AdamW and a cosine schedule. No mixup, no
+cutmix, no label smoothing, no EMA. 4.19 hours on a single Kaggle T4.
+
+```
+epoch 28  train 98.04%   val 86.12%   <- best
+epoch 29  train 98.07%   val 86.03%
+```
+
+The 12-point gap between train and validation accuracy is the point of running this configuration
+first. It is the headroom the training recipe exists to close, and it is now a measured target
+rather than an assumption. Throughput was roughly 195 images per second, well below what a T4
+manages on this model, so the run was bound by JPEG decode and augmentation on four vCPUs rather
+than by the GPU.
+
+### On the int8 numbers
+
+The size reduction is measured and architecture-determined, so it holds for the trained weights.
+The **latency** result does not transfer: on the development laptop int8 is *slower* than fp32,
+because that CPU has AVX2 but no AVX512-VNNI and the inserted quantization nodes are overhead that
+never gets repaid. Phones have ARM dot-product instructions that ONNX Runtime does use, so the
+on-device number is the one that matters and it has not been taken yet.
 
 Two test sets are reported separately and deliberately. Nutrition5k is captured overhead on a fixed
 rig in Google cafeterias, which is not what a handheld phone photo looks like. A personal set of
