@@ -112,6 +112,17 @@ def load_model_weights(
     return payload
 
 
+def backbone_of(payload: dict[str, Any]) -> str | None:
+    """Which architecture a checkpoint belongs to.
+
+    Prefers the first-class field, falling back to the config blob. Checkpoints written
+    before the field existed still carry the backbone in their saved arguments, and the
+    Food-101 baseline is one of them: refusing to load a genuinely valid four-hour
+    training run over a missing key would make the guard an obstacle rather than a check.
+    """
+    return payload.get("backbone") or payload.get("config", {}).get("backbone")
+
+
 def restore_nutrition_model(path: Path, *, map_location: str = "cpu"):
     """Rebuild a nutrition model and the target transform it was trained with.
 
@@ -126,7 +137,7 @@ def restore_nutrition_model(path: Path, *, map_location: str = "cpu"):
 
     payload = load_checkpoint(path, map_location=map_location)
 
-    backbone = payload.get("backbone")
+    backbone = backbone_of(payload)
     if not backbone:
         raise ValueError(f"{path} does not record which backbone it was trained with")
 
@@ -163,7 +174,7 @@ def restore_combined_model(path: Path, *, map_location: str = "cpu"):
     payload = load_checkpoint(path, map_location=map_location)
     config = payload.get("config", {})
 
-    backbone_name = payload.get("backbone")
+    backbone_name = backbone_of(payload)
     if not backbone_name:
         raise ValueError(f"{path} does not record which backbone it was trained with")
     stored = config.get("target_transform")
@@ -205,7 +216,7 @@ def restore_classifier(
 
     payload = load_checkpoint(path, map_location=map_location)
 
-    backbone = payload.get("backbone")
+    backbone = backbone_of(payload)
     if not backbone:
         raise ValueError(
             f"{path} does not record which backbone it was trained with, so the "

@@ -7,6 +7,7 @@ importing torch. The Dataset classes on top are thin.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -152,6 +153,31 @@ def build_food101_index(root: Path, split: str) -> list[Food101Sample]:
             )
         )
     return samples
+
+
+def build_ood_index(manifest_path: Path, images_root: Path) -> tuple[list[Food101Sample], int]:
+    """Build the out-of-distribution index from a manifest and downloaded images.
+
+    Returns (samples, missing). Entries whose image is not on disk are skipped rather than
+    silently producing load errors mid-epoch; link rot is expected on a set assembled from
+    third-party hosts, so the count is returned instead of being swallowed.
+
+    Labels here are weak: they come from the search term used to find each image, not from
+    anyone checking it. Accuracy measured on this set has a noise floor and should be
+    reported alongside an estimate of it.
+    """
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    samples: list[Food101Sample] = []
+    missing = 0
+    for entry in manifest["images"]:
+        stem = entry["identifier"] or str(abs(hash(entry["url"])))
+        path = images_root / entry["class_key"] / f"{stem}.jpg"
+        if not path.is_file():
+            missing += 1
+            continue
+        samples.append(Food101Sample(image_path=path, label=entry["label"]))
+    return samples, missing
 
 
 def _load_rgb(path: Path):

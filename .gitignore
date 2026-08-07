@@ -3,6 +3,9 @@
 model/data/food101/
 model/data/nutrition5k/
 model/data/personal/
+# Downloaded OOD images are not redistributed. The manifest that defines the set is
+# tracked; the photos it points at stay out of a public repository.
+model/data/ood/images/
 *.pt
 *.pth
 *.ckpt
@@ -68,3 +71,7 @@ kaggle.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Dry-run manifests from `build_ood_manifest.py --classes N`. Only the full manifest
+# and its review sample are tracked.
+model/data/ood/sample*.json
