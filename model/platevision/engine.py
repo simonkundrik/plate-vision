@@ -161,6 +161,7 @@ def train_one_epoch(
     mixing: MixingPolicy | None = None,
     ema=None,
     resolution: int = 0,
+    distiller=None,
 ) -> EpochResult:
     model.train()
     loss_meter, top1_meter, top5_meter = AverageMeter(), AverageMeter(), AverageMeter()
@@ -184,6 +185,13 @@ def train_one_epoch(
         with torch.amp.autocast(device_type=device.type, enabled=amp_enabled):
             outputs = model(images)
             loss = mixed_criterion(criterion, outputs, mix) if mix else criterion(outputs, targets)
+
+            if distiller is not None:
+                # The teacher scores the same augmented batch the student just saw, which
+                # is why its opinion is usable at all. Inside autocast so both models run
+                # at the same precision.
+                teacher_logits = distiller.teacher_logits(images)
+                loss = distiller.combine(outputs, teacher_logits, loss)
 
         if scaler is not None:
             scaler.scale(loss).backward()
