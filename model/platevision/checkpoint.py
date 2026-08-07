@@ -147,6 +147,49 @@ def restore_nutrition_model(path: Path, *, map_location: str = "cpu"):
     return model, TargetTransform.from_dict(stored), payload
 
 
+def restore_combined_model(path: Path, *, map_location: str = "cpu"):
+    """Rebuild the two-head model that gets exported, and its target transform.
+
+    Both heads must have been fitted against the same backbone. That is what the linear
+    probe step guarantees, and it is why the combined checkpoint is written by that script
+    rather than assembled ad hoc at export time.
+    """
+    import timm
+    from torch import nn
+
+    from platevision.models import CombinedModel
+    from platevision.targets import TargetTransform
+
+    payload = load_checkpoint(path, map_location=map_location)
+    config = payload.get("config", {})
+
+    backbone_name = payload.get("backbone")
+    if not backbone_name:
+        raise ValueError(f"{path} does not record which backbone it was trained with")
+    stored = config.get("target_transform")
+    if not stored:
+        raise ValueError(
+            f"{path} has no target transform, so its nutrition outputs cannot be "
+            "converted back into kilocalories"
+        )
+
+    num_targets = config["num_targets"]
+    num_quantiles = config["num_quantiles"]
+
+    backbone = timm.create_model(backbone_name, pretrained=False, num_classes=0)
+    feature_dim = backbone(torch.zeros(1, 3, 224, 224)).shape[1]
+
+    model = CombinedModel(
+        backbone,
+        nn.Linear(feature_dim, payload["num_classes"]),
+        nn.Linear(feature_dim, num_targets * num_quantiles),
+        num_targets=num_targets,
+        num_quantiles=num_quantiles,
+    )
+    model.load_state_dict(payload["model"])
+    return model, TargetTransform.from_dict(stored), payload
+
+
 def restore_classifier(
     path: Path, *, map_location: str = "cpu", pretrained: bool = False
 ) -> tuple[torch.nn.Module, dict[str, Any]]:

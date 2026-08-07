@@ -126,6 +126,10 @@ class CombinedModel(nn.Module):
         self.num_targets = num_targets
         self.num_quantiles = num_quantiles
         self.dropout = nn.Dropout(drop_rate)
+        # Declared explicitly. Checkpoint saving infers output width from the last
+        # parameter when a model does not say, and the last parameter here belongs to the
+        # nutrition head, so it would record 15 classes instead of 101.
+        self.num_classes = classifier_head.out_features
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.dropout(self.backbone(x))
