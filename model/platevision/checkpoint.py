@@ -112,6 +112,41 @@ def load_model_weights(
     return payload
 
 
+def restore_nutrition_model(path: Path, *, map_location: str = "cpu"):
+    """Rebuild a nutrition model and the target transform it was trained with.
+
+    The transform is not optional extra metadata. The model predicts in standardised log
+    space, so without the exact statistics it was fitted with, its outputs are unitless
+    numbers rather than kilocalories. Storing them in the checkpoint is what makes the
+    weights usable on their own.
+    """
+    from platevision.meta import quantiles, target_keys
+    from platevision.models import NutritionModel
+    from platevision.targets import TargetTransform
+
+    payload = load_checkpoint(path, map_location=map_location)
+
+    backbone = payload.get("backbone")
+    if not backbone:
+        raise ValueError(f"{path} does not record which backbone it was trained with")
+
+    stored = payload.get("config", {}).get("target_transform")
+    if not stored:
+        raise ValueError(
+            f"{path} has no target transform, so its predictions cannot be converted "
+            "back into kilocalories"
+        )
+
+    model = NutritionModel(
+        backbone,
+        num_targets=len(target_keys()),
+        num_quantiles=len(quantiles()),
+        pretrained=False,
+    )
+    model.load_state_dict(payload["model"])
+    return model, TargetTransform.from_dict(stored), payload
+
+
 def restore_classifier(
     path: Path, *, map_location: str = "cpu", pretrained: bool = False
 ) -> tuple[torch.nn.Module, dict[str, Any]]:
