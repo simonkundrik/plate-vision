@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -35,10 +36,15 @@ def build(args, device):
     train_samples, train_stats = datasets.build_nutrition5k_index(root, "train")
     val_samples, val_stats = datasets.build_nutrition5k_index(root, "test")
 
-    if args.limit_train:
-        train_samples = train_samples[: args.limit_train]
-    if args.limit_val:
-        val_samples = val_samples[: args.limit_val]
+    # Sampled rather than sliced, for the same reason as the classifier scripts: a prefix
+    # of an ordered split is not a representative subset. Nutrition5k is ordered by dish id
+    # rather than by class, so the bias is milder here, but a debugging flag that quietly
+    # changes the distribution is not worth keeping around.
+    rng = random.Random(args.seed)
+    if args.limit_train and len(train_samples) > args.limit_train:
+        train_samples = rng.sample(train_samples, args.limit_train)
+    if args.limit_val and len(val_samples) > args.limit_val:
+        val_samples = rng.sample(val_samples, args.limit_val)
 
     print(f"train: {train_stats.kept:,} kept of {train_stats.listed:,} listed")
     print(

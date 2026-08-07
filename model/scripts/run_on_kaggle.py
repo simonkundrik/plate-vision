@@ -132,6 +132,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-gpu", action="store_true")
     parser.add_argument("--watch", action="store_true", help="poll until the run finishes")
     parser.add_argument("--fetch-only", action="store_true", help="skip the push, fetch output")
+    parser.add_argument(
+        "--watch-only",
+        action="store_true",
+        help="watch a run that is already going, then fetch. Does not push.",
+    )
     parser.add_argument("--out", type=Path, default=MODEL_DIR / "runs" / "kaggle")
     parser.add_argument("--poll-seconds", type=int, default=POLL_SECONDS)
     args = parser.parse_args(argv)
@@ -140,6 +145,16 @@ def main(argv: list[str] | None = None) -> int:
     kernel_id = f"{username}/{args.slug}"
 
     if args.fetch_only:
+        fetch(kernel_id, args.out)
+        return 0
+
+    # Watching without pushing. Previously --watch implied a push, so there was no way to
+    # follow a run already in flight without starting a second one on top of it.
+    if args.watch_only:
+        status = watch(kernel_id, args.poll_seconds)
+        if status != "complete":
+            print(f"run finished with status: {status}", file=sys.stderr)
+            return 1
         fetch(kernel_id, args.out)
         return 0
 
