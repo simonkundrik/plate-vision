@@ -177,6 +177,54 @@ def test_parse_records_provenance():
     assert item.description
 
 
+# --- brand verification --------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("description", "brand", "expected"),
+    [
+        ("Big Mac (McDonalds)", "McDonalds", True),
+        ("Whopper (Burger King)", "Burger King", True),
+        # The generic records that were silently passing as branded ground truth.
+        ("Chicken nuggets, NFS", "Wendys", False),
+        ("Chicken fillet sandwich, NFS", "Chick-fil-A", False),
+        ("Coleslaw", "KFC", False),
+        ("Croissant", "Starbucks", False),
+        ("Soup, broccoli cheese", "Panera", False),
+        ("Burrito bowl, chicken", "Chipotle", False),
+    ],
+)
+def test_brand_verification(description, brand, expected):
+    assert fdc.mentions_brand(description, brand) is expected
+
+
+def test_nfs_marker_disqualifies_even_with_a_brand_match():
+    """ "Not Further Specified" means a category average. A branded name appearing in one
+    would still not make it that chain's product."""
+    assert not fdc.mentions_brand("McDonalds hamburger, NFS", "McDonalds")
+
+
+def test_generic_records_are_rejected_when_the_brand_is_required():
+    """A generic croissant is about 170 kcal against a Starbucks one nearer 260. Labelling
+    Starbucks photos with the generic figure is roughly a 50 percent error presented as
+    ground truth."""
+    payload = {"foods": [food(description="Croissant")]}
+    assert fdc.parse_search(payload, "croissant Starbucks", "croissant", "Starbucks", True) is None
+
+
+def test_generic_records_are_kept_but_flagged_when_allowed():
+    payload = {"foods": [food(description="Croissant")]}
+    item = fdc.parse_search(payload, "croissant Starbucks", "croissant", "Starbucks", False)
+
+    assert item is not None
+    assert item.brand_verified is False
+
+
+def test_brand_specific_records_are_flagged_verified():
+    item = fdc.parse_search({"foods": [food()]}, "Big Mac McDonalds", "Big Mac", "McDonalds", True)
+    assert item.brand_verified is True
+
+
 # --- the seed list ------------------------------------------------------------------
 
 
