@@ -96,6 +96,34 @@ def test_default_accelerator_is_t4_not_p100():
     assert kaggle_run.DEFAULT_ACCELERATOR in kaggle_run.ACCELERATORS
 
 
+CONFIG_VIEW_OUTPUT = """Configuration values from C:\\Users\\someone\\.kaggle
+- username: sk21832
+- auth_method: OAUTH
+- path: None
+- proxy: None
+- competition: None
+"""
+
+
+def test_username_is_read_from_config_view():
+    """OAuth writes credentials.json, not kaggle.json, so there is no username on disk
+    to read. `kaggle config view` reports it and contains no token."""
+    assert kaggle_run.parse_config_username(CONFIG_VIEW_OUTPUT) == "sk21832"
+
+
+def test_config_view_username_of_none_is_treated_as_absent():
+    raw = "Configuration values from ~/.kaggle\n- username: None\n- path: None\n"
+    assert kaggle_run.parse_config_username(raw) is None
+
+
+def test_config_view_without_a_username_returns_none():
+    assert kaggle_run.parse_config_username("Configuration values\n- path: None\n") is None
+
+
+def test_config_view_parsing_survives_an_unauthenticated_error():
+    assert kaggle_run.parse_config_username("Authentication required to call the API") is None
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

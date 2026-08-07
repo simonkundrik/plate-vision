@@ -44,11 +44,23 @@ def kaggle_cli(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 
 
 def resolve_username(explicit: str | None) -> str:
+    """Work out the Kaggle username without ever reading a secret.
+
+    OAuth is the CLI's recommended flow and it writes credentials.json, not the legacy
+    kaggle.json, so the username has to come from `kaggle config view`. That output
+    contains no token, which is the point: it is safe to parse and safe to log.
+    """
     if explicit:
         return explicit
     if env := os.environ.get("KAGGLE_USERNAME"):
         return env
 
+    result = kaggle_cli("config", "view", check=False)
+    username = kaggle_run.parse_config_username(result.stdout + result.stderr)
+    if username:
+        return username
+
+    # Legacy token file, still present on setups that predate the OAuth flow.
     token_file = Path.home() / ".kaggle" / "kaggle.json"
     if token_file.is_file():
         try:
