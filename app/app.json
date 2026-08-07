@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "plate-vision",
+    "slug": "plate-vision",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0B0C"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.simonkundrik.platevision"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B0B0C"
+      },
+      "package": "dev.simonkundrik.platevision",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "plate-vision uses the camera to photograph your meal. The photo is analysed on this device and is not uploaded."
+        }
+      ],
+      "expo-dev-client"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // The label list and the model contract are imported from ../shared rather than
+    // copied in. A second copy is a second ordering, and a drifted ordering does not
+    // crash: it renames every prediction.
+    "resolveJsonModule": true,
+    "esModuleInterop": true
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../shared/*.json"],
+  "exclude": ["node_modules"]
+}
