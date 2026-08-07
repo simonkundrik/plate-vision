@@ -49,11 +49,15 @@ class EpochResult:
         return asdict(self)
 
     def format(self) -> str:
-        return (
+        line = (
             f"epoch {self.epoch:>3} {self.split:<5} "
             f"loss {self.loss:.4f}  top1 {self.top1:6.2f}%  top5 {self.top5:6.2f}%  "
-            f"lr {self.lr:.2e}  {self.seconds:.1f}s"
         )
+        # Evaluation has no optimiser, so its lr is structurally zero. Printing it reads
+        # like the schedule collapsed mid-epoch, which is exactly the bug people look for.
+        if self.split == "train":
+            line += f"lr {self.lr:.2e}  "
+        return line + f"{self.seconds:.1f}s"
 
 
 @dataclass(slots=True)
