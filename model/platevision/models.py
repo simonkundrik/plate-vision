@@ -46,6 +46,77 @@ def create_classifier(
     )
 
 
+class NutritionModel(nn.Module):
+    """Backbone plus a quantile-regression head.
+
+    Outputs (batch, targets, quantiles). The head is deliberately a single linear layer
+    with dropout rather than an MLP: there are 2,755 training dishes, and extra head
+    capacity on that little data buys overfitting, not accuracy.
+    """
+
+    def __init__(
+        self,
+        backbone: str = STUDENT_BACKBONE,
+        *,
+        num_targets: int,
+        num_quantiles: int,
+        pretrained: bool = True,
+        drop_rate: float = 0.3,
+    ) -> None:
+        super().__init__()
+        import timm
+
+        # num_classes=0 makes timm return pooled features instead of logits.
+        self.backbone = timm.create_model(backbone, pretrained=pretrained, num_classes=0)
+
+        # Probed rather than read from backbone.num_features, which is not always the
+        # width that comes out. MobileNetV3 reports 576 there but emits 1024, because it
+        # has an extra head convolution ahead of the classifier. Measuring is correct for
+        # every architecture; trusting the attribute is correct for some of them.
+        self.feature_dim = self._probe_feature_dim()
+
+        self.num_targets = num_targets
+        self.num_quantiles = num_quantiles
+        self.dropout = nn.Dropout(drop_rate)
+        self.head = nn.Linear(self.feature_dim, num_targets * num_quantiles)
+
+    @torch.no_grad()
+    def _probe_feature_dim(self) -> int:
+        from platevision.meta import input_size
+
+        was_training = self.backbone.training
+        self.backbone.eval()
+        height, width = input_size()
+        features = self.backbone(torch.zeros(1, 3, height, width))
+        self.backbone.train(was_training)
+        return int(features.shape[1])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        features = self.dropout(self.backbone(x))
+        return self.head(features).view(-1, self.num_targets, self.num_quantiles)
+
+
+def load_backbone_weights(
+    model: NutritionModel, classifier_state: dict[str, torch.Tensor]
+) -> tuple[int, int]:
+    """Transfer a trained classifier's backbone into a nutrition model.
+
+    Returns (copied, skipped). The classifier head has no counterpart here and is expected
+    to be skipped; anything else being skipped means the two backbones are not the same
+    architecture, which would otherwise present as a nutrition model that trains from
+    scratch while appearing to be a fine-tune.
+    """
+    own = model.state_dict()
+    matched = {}
+    for key, value in classifier_state.items():
+        prefixed = key if key in own else f"backbone.{key}"
+        if prefixed in own and own[prefixed].shape == value.shape:
+            matched[prefixed] = value
+
+    model.load_state_dict(matched, strict=False)
+    return len(matched), len(classifier_state) - len(matched)
+
+
 def count_parameters(model: nn.Module, *, trainable_only: bool = True) -> int:
     params = model.parameters()
     if trainable_only:
