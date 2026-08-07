@@ -1,0 +1,66 @@
+# Datasets and model artifacts are never committed.
+# Datasets are fetched by model/data/ scripts; trained models ship via GitHub Releases.
+model/data/food101/
+model/data/nutrition5k/
+model/data/personal/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.ort
+*.pte
+*.tflite
+
+# Training outputs
+runs/
+outputs/
+checkpoints/
+wandb/
+lightning_logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+dist/
+build/
+
+# Node
+node_modules/
+*.tsbuildinfo
+.eslintcache
+
+# Expo
+.expo/
+.expo-shared/
+android/
+ios/
+*.apk
+*.aab
+
+# Vite
+web/dist/
+web/.vite/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+kaggle.json
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
