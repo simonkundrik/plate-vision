@@ -13,11 +13,14 @@ The runtime is an optional peer dependency, so you install only the one you need
 ## Usage
 
 ```ts
-import { load, decodeImage } from "@plate-vision/client";
+import { load, decodeImage, parseBundle } from "@plate-vision/client";
 
 const pv = await load({
-  model: "https://example.com/plate-vision-int8.onnx",
-  bundle: await fetch("https://example.com/bundle.json").then((r) => r.json()),
+  model: "https://example.com/plate-vision-fp32.onnx",
+  // bundle.json is written by the exporter. parseBundle validates it and throws on a
+  // manifest it cannot read, rather than filling in defaults for a model whose
+  // provenance it does not know.
+  bundle: parseBundle(await fetch("https://example.com/bundle.json").then((r) => r.json())),
 });
 
 const image = await decodeImage(fileOrUrlOrBitmap);
@@ -91,6 +94,8 @@ pipeline is in the same repository and is MIT.
 | Export | Purpose |
 |---|---|
 | `load(options)` | Create a session using the platform's ONNX runtime |
+| `parseBundle(json)` | Validate a published `bundle.json` into a `ModelBundle` |
+| `artifactOf(json)` | Expected name, size, and SHA-256 of the artifact a manifest describes |
 | `PlateVision` | The session class, if you want to inject a runtime yourself |
 | `decodeImage(source, maxEdge?)` | Browser only. Canvas decode to raw RGB |
 | `stripAlpha(rgba)` | Drop the alpha channel from RGBA bytes |

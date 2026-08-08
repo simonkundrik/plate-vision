@@ -70,6 +70,42 @@ class ParityResult:
     within_tolerance: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ArtifactDigest:
+    """Identity of a shipped model file, recorded in the bundle manifest."""
+
+    name: str
+    bytes: int
+    sha256: str
+
+    def as_dict(self) -> dict[str, int | str]:
+        return {"name": self.name, "bytes": self.bytes, "sha256": self.sha256}
+
+
+def digest_artifact(path: Path, chunk_bytes: int = 1 << 20) -> ArtifactDigest:
+    """Size and SHA-256 of an exported artifact.
+
+    A client downloading a model over a phone connection has no other way to tell a
+    complete file from a truncated one. ONNX Runtime does reject a malformed protobuf, but
+    a download cut mid-stream can still parse as a valid, shorter graph, and the failure
+    then looks like a bad model rather than a bad download.
+
+    Hashed in chunks rather than by reading the file into memory: artifacts here are tens
+    of megabytes, and the teacher checkpoints this same function will be pointed at are
+    larger.
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(chunk_bytes):
+            digest.update(chunk)
+            size += len(chunk)
+
+    return ArtifactDigest(name=path.name, bytes=size, sha256=digest.hexdigest())
+
+
 def example_input(height: int = 480, width: int = 640, batch: int = 1) -> torch.Tensor:
     """A deliberately non-square, non-target-sized input.
 

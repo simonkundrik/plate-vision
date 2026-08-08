@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "generated_utc": "2026-01-01T00:00:00+00:00",
+  "contract": "shared/model_meta.json",
+  "artifact": {
+    "name": "plate-vision-fp32.onnx",
+    "bytes": 17280512,
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "heads_trained": {
+    "logits": true,
+    "nutrition_quantiles": true
+  },
+  "target_transform": {
+    "mean": [
+      5.09,
+      2.32,
+      2.05,
+      2.64,
+      5.1
+    ],
+    "std": [
+      1.1,
+      1.23,
+      1.19,
+      0.93,
+      0.82
+    ],
+    "keys": [
+      "energy",
+      "protein",
+      "fat",
+      "carbohydrate",
+      "mass"
+    ]
+  },
+  "provenance": {
+    "classifier_checkpoint": "runs/kaggle-baseline/runs/baseline/best.pt",
+    "classifier_backbone": "efficientnet_b0",
+    "classifier_metric": 86.12,
+    "nutrition_source": "runs/nutrition/best.pt",
+    "target_transform": {
+      "mean": [
+        5.09,
+        2.32,
+        2.05,
+        2.64,
+        5.1
+      ],
+      "std": [
+        1.1,
+        1.23,
+        1.19,
+        0.93,
+        0.82
+      ],
+      "keys": [
+        "energy",
+        "protein",
+        "fat",
+        "carbohydrate",
+        "mass"
+      ]
+    }
+  },
+  "quantization": null
+}
