@@ -1,0 +1,62 @@
+name: release client
+
+# Publishing from a laptop means the published tarball is whatever happened to be in a
+# working directory. Tag-triggered publishing means it is whatever is at that tag, which is
+# the only version anyone can actually inspect.
+on:
+  push:
+    tags:
+      - "client-v*"
+
+permissions:
+  contents: read
+  # Required for npm provenance: npm verifies the OIDC token and records which workflow,
+  # commit, and repository produced the tarball.
+  id-token: write
+
+jobs:
+  publish:
+    name: publish @plate-vision/client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: npm ci
+
+      # The gates that run on every PR run again here. A tag can be pushed from a branch
+      # that never passed CI, and finding that out after publishing is finding out too late.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      # The tag is the source of truth for the version. Publishing 0.1.0 from a tag reading
+      # client-v0.2.0 produces a release nobody can find and a tag that describes nothing.
+      - name: Check the tag matches the package version
+        working-directory: packages/client
+        run: |
+          tag="${GITHUB_REF_NAME#client-v}"
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag client-v$tag does not match package version $pkg" >&2
+            exit 1
+          fi
+          echo "publishing $pkg"
+
+      - name: Publish
+        working-directory: packages/client
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

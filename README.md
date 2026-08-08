@@ -192,9 +192,16 @@ sit in every clone. The app fetches it on first launch from a published release 
 it under a name that includes the artifact hash, so a re-exported model is actually picked
 up rather than shadowed by the previous file.
 
+`app.json` points at a pinned release tag, so a checkout runs against the model it was
+tested with. Override with `EXPO_PUBLIC_MODEL_URL` / `EXPO_PUBLIC_BUNDLE_URL`.
+
 ```bash
-EXPO_PUBLIC_MODEL_URL=... EXPO_PUBLIC_BUNDLE_URL=... npx expo start --dev-client
+npx expo start --dev-client
 ```
+
+The published artifact identifies the dish and **reports no calorie estimate**. Its
+nutrition head is untrained, `bundle.json` records that, and the client withholds the
+output rather than returning values from random weights. See [RELEASING.md](RELEASING.md).
 
 `onnxruntime-react-native` is a native module, so Expo Go will not run this. It needs a
 development build:
