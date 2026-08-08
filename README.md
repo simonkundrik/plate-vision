@@ -54,10 +54,10 @@ Full detail, including the negative results, is in the [model card](MODEL_CARD.m
 | Food-101 top-1 | 85%+ | **86.12%** |
 | Food-101 top-5 | | **96.90%** |
 | Top-1 on out-of-distribution photos | | **59.21%** (see caveat below) |
-| Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | **51.6 kcal**, 18.1% median APE |
-| Calorie median APE, unknown camera distance | | **30.6%** (see below) |
+| Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | **56.7 kcal**, 19.4% median APE |
+| Calorie median APE, unknown camera distance | | **30.2%** (see below) |
 | Calorie MAE, personal weighed-meal set | reported honestly, expected to be worse | not collected |
-| 90% interval coverage | 90% (+/- 3pp) | **64.6% as trained, ~90% conformalised** |
+| 90% interval coverage | 90% (+/- 3pp) | **82.2% as trained, 90.5% +/- 2.3 conformalised** |
 | Deployable model size | under 10 MB | **16.48 MB fp32.** int8 is 5.24 MB but unusable, see below |
 | Inference p95, mid-range Android | under 100 ms | not measured; ~100-400 ms in a browser tab |
 
@@ -69,12 +69,16 @@ distance by zooming the test images:
 
 | Camera distance | Calorie median APE | Interval coverage |
 |---|---|---|
-| Known (the rig) | 18.1% | 64.6% |
-| ±2.0x | **30.6%** | **42.9%** |
+| Known (the rig) | 19.4% | 82.2% |
+| ±2.0x | **30.2%** | **62.1%** |
 
-**Unknown camera distance costs 12.5 points of calorie error**, and coverage falls with it,
-so conformal offsets fitted on rig data will not hold on phone data either. This is the
-closest thing to a deployment number obtainable without weighed photographs.
+**Unknown camera distance costs 10.8 points of calorie error.** This is the closest thing to
+a deployment number obtainable without weighed photographs.
+
+Zoom-out augmentation was added to close that gap and did not: point accuracy under scale
+uncertainty is unchanged. What it did instead was make the model less confident when the cue
+is missing, lifting coverage at that distortion from 42.9% to 62.1%. Augmentation cannot
+supply information the image does not contain.
 
 Reproduce with `model/scripts/measure_scale_dependence.py`.
 
