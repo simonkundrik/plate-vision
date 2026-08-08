@@ -47,16 +47,36 @@ Python, Android, and browser preprocessing to silently diverge.
 Filled in as the work lands. Anything still reading TBD has not been measured, and nothing here is
 a projection.
 
+Full detail, including the negative results, is in the [model card](MODEL_CARD.md).
+
 | Metric | Target | Measured |
 |---|---|---|
 | Food-101 top-1 | 85%+ | **86.12%** |
 | Food-101 top-5 | | **96.90%** |
 | Top-1 on out-of-distribution photos | | **59.21%** (see caveat below) |
-| Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | TBD |
-| Calorie MAE, personal weighed-meal set | reported honestly, expected to be worse | TBD |
-| 90% interval coverage | 90% (+/- 3pp) | TBD |
+| Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | **51.6 kcal**, 18.1% median APE |
+| Calorie median APE, unknown camera distance | | **30.6%** (see below) |
+| Calorie MAE, personal weighed-meal set | reported honestly, expected to be worse | not collected |
+| 90% interval coverage | 90% (+/- 3pp) | **64.6% as trained, ~90% conformalised** |
 | Deployable model size | under 10 MB | **16.48 MB fp32.** int8 is 5.24 MB but unusable, see below |
-| Inference p95, mid-range Android | under 100 ms | TBD |
+| Inference p95, mid-range Android | under 100 ms | not measured; ~100-400 ms in a browser tab |
+
+### The rig is doing more work than the model
+
+Nutrition5k is a fixed overhead camera at constant height, so apparent size in pixels *is*
+real size and the model learns to read scale off the image. Simulating a phone at unknown
+distance by zooming the test images:
+
+| Camera distance | Calorie median APE | Interval coverage |
+|---|---|---|
+| Known (the rig) | 18.1% | 64.6% |
+| ±2.0x | **30.6%** | **42.9%** |
+
+**Unknown camera distance costs 12.5 points of calorie error**, and coverage falls with it,
+so conformal offsets fitted on rig data will not hold on phone data either. This is the
+closest thing to a deployment number obtainable without weighed photographs.
+
+Reproduce with `model/scripts/measure_scale_dependence.py`.
 
 ### Baseline run
 
