@@ -185,6 +185,29 @@ from random weights rather than letting them reach a UI looking like measurement
 images are not ETH Zurich's to relicense. Treat them as research use only, and train your
 own for anything you intend to ship.
 
+## Running the Android app
+
+The model is not bundled into the APK or committed here: it is tens of megabytes and would
+sit in every clone. The app fetches it on first launch from a published release and caches
+it under a name that includes the artifact hash, so a re-exported model is actually picked
+up rather than shadowed by the previous file.
+
+```bash
+EXPO_PUBLIC_MODEL_URL=... EXPO_PUBLIC_BUNDLE_URL=... npx expo start --dev-client
+```
+
+`onnxruntime-react-native` is a native module, so Expo Go will not run this. It needs a
+development build:
+
+```bash
+npx eas build --profile development --platform android
+```
+
+**The app has not been run on a device.** Everything in `app/` typechecks and its pure
+logic is unit tested, but no build has been made, so the ONNX session, the camera path, and
+the model download have never executed. That is a statement about what has been verified,
+not a guess about whether it works.
+
 ## Repo layout
 
 ```
