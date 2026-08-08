@@ -1,0 +1,515 @@
+{
+  "schema_version": 1,
+  "dataset": "Food-101",
+  "source": "https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/",
+  "ordering_note": "Index is the position on the logits axis of the exported model. This is the canonical Food-101 meta/classes.txt order, which is NOT the same as Python sorted() order (cheesecake precedes cheese_plate). Reordering this list silently mislabels every prediction, so order_sha256 is asserted in tests.",
+  "order_sha256": "a5845564e1140c178ded1515072359eb8bf0026b38386dd171ecdd877d844600",
+  "count": 101,
+  "labels": [
+    {
+      "index": 0,
+      "key": "apple_pie",
+      "display": "Apple pie"
+    },
+    {
+      "index": 1,
+      "key": "baby_back_ribs",
+      "display": "Baby back ribs"
+    },
+    {
+      "index": 2,
+      "key": "baklava",
+      "display": "Baklava"
+    },
+    {
+      "index": 3,
+      "key": "beef_carpaccio",
+      "display": "Beef carpaccio"
+    },
+    {
+      "index": 4,
+      "key": "beef_tartare",
+      "display": "Beef tartare"
+    },
+    {
+      "index": 5,
+      "key": "beet_salad",
+      "display": "Beet salad"
+    },
+    {
+      "index": 6,
+      "key": "beignets",
+      "display": "Beignets"
+    },
+    {
+      "index": 7,
+      "key": "bibimbap",
+      "display": "Bibimbap"
+    },
+    {
+      "index": 8,
+      "key": "bread_pudding",
+      "display": "Bread pudding"
+    },
+    {
+      "index": 9,
+      "key": "breakfast_burrito",
+      "display": "Breakfast burrito"
+    },
+    {
+      "index": 10,
+      "key": "bruschetta",
+      "display": "Bruschetta"
+    },
+    {
+      "index": 11,
+      "key": "caesar_salad",
+      "display": "Caesar salad"
+    },
+    {
+      "index": 12,
+      "key": "cannoli",
+      "display": "Cannoli"
+    },
+    {
+      "index": 13,
+      "key": "caprese_salad",
+      "display": "Caprese salad"
+    },
+    {
+      "index": 14,
+      "key": "carrot_cake",
+      "display": "Carrot cake"
+    },
+    {
+      "index": 15,
+      "key": "ceviche",
+      "display": "Ceviche"
+    },
+    {
+      "index": 16,
+      "key": "cheesecake",
+      "display": "Cheesecake"
+    },
+    {
+      "index": 17,
+      "key": "cheese_plate",
+      "display": "Cheese plate"
+    },
+    {
+      "index": 18,
+      "key": "chicken_curry",
+      "display": "Chicken curry"
+    },
+    {
+      "index": 19,
+      "key": "chicken_quesadilla",
+      "display": "Chicken quesadilla"
+    },
+    {
+      "index": 20,
+      "key": "chicken_wings",
+      "display": "Chicken wings"
+    },
+    {
+      "index": 21,
+      "key": "chocolate_cake",
+      "display": "Chocolate cake"
+    },
+    {
+      "index": 22,
+      "key": "chocolate_mousse",
+      "display": "Chocolate mousse"
+    },
+    {
+      "index": 23,
+      "key": "churros",
+      "display": "Churros"
+    },
+    {
+      "index": 24,
+      "key": "clam_chowder",
+      "display": "Clam chowder"
+    },
+    {
+      "index": 25,
+      "key": "club_sandwich",
+      "display": "Club sandwich"
+    },
+    {
+      "index": 26,
+      "key": "crab_cakes",
+      "display": "Crab cakes"
+    },
+    {
+      "index": 27,
+      "key": "creme_brulee",
+      "display": "Creme brulee"
+    },
+    {
+      "index": 28,
+      "key": "croque_madame",
+      "display": "Croque madame"
+    },
+    {
+      "index": 29,
+      "key": "cup_cakes",
+      "display": "Cup cakes"
+    },
+    {
+      "index": 30,
+      "key": "deviled_eggs",
+      "display": "Deviled eggs"
+    },
+    {
+      "index": 31,
+      "key": "donuts",
+      "display": "Donuts"
+    },
+    {
+      "index": 32,
+      "key": "dumplings",
+      "display": "Dumplings"
+    },
+    {
+      "index": 33,
+      "key": "edamame",
+      "display": "Edamame"
+    },
+    {
+      "index": 34,
+      "key": "eggs_benedict",
+      "display": "Eggs benedict"
+    },
+    {
+      "index": 35,
+      "key": "escargots",
+      "display": "Escargots"
+    },
+    {
+      "index": 36,
+      "key": "falafel",
+      "display": "Falafel"
+    },
+    {
+      "index": 37,
+      "key": "filet_mignon",
+      "display": "Filet mignon"
+    },
+    {
+      "index": 38,
+      "key": "fish_and_chips",
+      "display": "Fish and chips"
+    },
+    {
+      "index": 39,
+      "key": "foie_gras",
+      "display": "Foie gras"
+    },
+    {
+      "index": 40,
+      "key": "french_fries",
+      "display": "French fries"
+    },
+    {
+      "index": 41,
+      "key": "french_onion_soup",
+      "display": "French onion soup"
+    },
+    {
+      "index": 42,
+      "key": "french_toast",
+      "display": "French toast"
+    },
+    {
+      "index": 43,
+      "key": "fried_calamari",
+      "display": "Fried calamari"
+    },
+    {
+      "index": 44,
+      "key": "fried_rice",
+      "display": "Fried rice"
+    },
+    {
+      "index": 45,
+      "key": "frozen_yogurt",
+      "display": "Frozen yogurt"
+    },
+    {
+      "index": 46,
+      "key": "garlic_bread",
+      "display": "Garlic bread"
+    },
+    {
+      "index": 47,
+      "key": "gnocchi",
+      "display": "Gnocchi"
+    },
+    {
+      "index": 48,
+      "key": "greek_salad",
+      "display": "Greek salad"
+    },
+    {
+      "index": 49,
+      "key": "grilled_cheese_sandwich",
+      "display": "Grilled cheese sandwich"
+    },
+    {
+      "index": 50,
+      "key": "grilled_salmon",
+      "display": "Grilled salmon"
+    },
+    {
+      "index": 51,
+      "key": "guacamole",
+      "display": "Guacamole"
+    },
+    {
+      "index": 52,
+      "key": "gyoza",
+      "display": "Gyoza"
+    },
+    {
+      "index": 53,
+      "key": "hamburger",
+      "display": "Hamburger"
+    },
+    {
+      "index": 54,
+      "key": "hot_and_sour_soup",
+      "display": "Hot and sour soup"
+    },
+    {
+      "index": 55,
+      "key": "hot_dog",
+      "display": "Hot dog"
+    },
+    {
+      "index": 56,
+      "key": "huevos_rancheros",
+      "display": "Huevos rancheros"
+    },
+    {
+      "index": 57,
+      "key": "hummus",
+      "display": "Hummus"
+    },
+    {
+      "index": 58,
+      "key": "ice_cream",
+      "display": "Ice cream"
+    },
+    {
+      "index": 59,
+      "key": "lasagna",
+      "display": "Lasagna"
+    },
+    {
+      "index": 60,
+      "key": "lobster_bisque",
+      "display": "Lobster bisque"
+    },
+    {
+      "index": 61,
+      "key": "lobster_roll_sandwich",
+      "display": "Lobster roll sandwich"
+    },
+    {
+      "index": 62,
+      "key": "macaroni_and_cheese",
+      "display": "Macaroni and cheese"
+    },
+    {
+      "index": 63,
+      "key": "macarons",
+      "display": "Macarons"
+    },
+    {
+      "index": 64,
+      "key": "miso_soup",
+      "display": "Miso soup"
+    },
+    {
+      "index": 65,
+      "key": "mussels",
+      "display": "Mussels"
+    },
+    {
+      "index": 66,
+      "key": "nachos",
+      "display": "Nachos"
+    },
+    {
+      "index": 67,
+      "key": "omelette",
+      "display": "Omelette"
+    },
+    {
+      "index": 68,
+      "key": "onion_rings",
+      "display": "Onion rings"
+    },
+    {
+      "index": 69,
+      "key": "oysters",
+      "display": "Oysters"
+    },
+    {
+      "index": 70,
+      "key": "pad_thai",
+      "display": "Pad thai"
+    },
+    {
+      "index": 71,
+      "key": "paella",
+      "display": "Paella"
+    },
+    {
+      "index": 72,
+      "key": "pancakes",
+      "display": "Pancakes"
+    },
+    {
+      "index": 73,
+      "key": "panna_cotta",
+      "display": "Panna cotta"
+    },
+    {
+      "index": 74,
+      "key": "peking_duck",
+      "display": "Peking duck"
+    },
+    {
+      "index": 75,
+      "key": "pho",
+      "display": "Pho"
+    },
+    {
+      "index": 76,
+      "key": "pizza",
+      "display": "Pizza"
+    },
+    {
+      "index": 77,
+      "key": "pork_chop",
+      "display": "Pork chop"
+    },
+    {
+      "index": 78,
+      "key": "poutine",
+      "display": "Poutine"
+    },
+    {
+      "index": 79,
+      "key": "prime_rib",
+      "display": "Prime rib"
+    },
+    {
+      "index": 80,
+      "key": "pulled_pork_sandwich",
+      "display": "Pulled pork sandwich"
+    },
+    {
+      "index": 81,
+      "key": "ramen",
+      "display": "Ramen"
+    },
+    {
+      "index": 82,
+      "key": "ravioli",
+      "display": "Ravioli"
+    },
+    {
+      "index": 83,
+      "key": "red_velvet_cake",
+      "display": "Red velvet cake"
+    },
+    {
+      "index": 84,
+      "key": "risotto",
+      "display": "Risotto"
+    },
+    {
+      "index": 85,
+      "key": "samosa",
+      "display": "Samosa"
+    },
+    {
+      "index": 86,
+      "key": "sashimi",
+      "display": "Sashimi"
+    },
+    {
+      "index": 87,
+      "key": "scallops",
+      "display": "Scallops"
+    },
+    {
+      "index": 88,
+      "key": "seaweed_salad",
+      "display": "Seaweed salad"
+    },
+    {
+      "index": 89,
+      "key": "shrimp_and_grits",
+      "display": "Shrimp and grits"
+    },
+    {
+      "index": 90,
+      "key": "spaghetti_bolognese",
+      "display": "Spaghetti bolognese"
+    },
+    {
+      "index": 91,
+      "key": "spaghetti_carbonara",
+      "display": "Spaghetti carbonara"
+    },
+    {
+      "index": 92,
+      "key": "spring_rolls",
+      "display": "Spring rolls"
+    },
+    {
+      "index": 93,
+      "key": "steak",
+      "display": "Steak"
+    },
+    {
+      "index": 94,
+      "key": "strawberry_shortcake",
+      "display": "Strawberry shortcake"
+    },
+    {
+      "index": 95,
+      "key": "sushi",
+      "display": "Sushi"
+    },
+    {
+      "index": 96,
+      "key": "tacos",
+      "display": "Tacos"
+    },
+    {
+      "index": 97,
+      "key": "takoyaki",
+      "display": "Takoyaki"
+    },
+    {
+      "index": 98,
+      "key": "tiramisu",
+      "display": "Tiramisu"
+    },
+    {
+      "index": 99,
+      "key": "tuna_tartare",
+      "display": "Tuna tartare"
+    },
+    {
+      "index": 100,
+      "key": "waffles",
+      "display": "Waffles"
+    }
+  ]
+}

@@ -154,13 +154,45 @@ Recorded here from the start rather than discovered by a reader:
 - **Single-dish assumption.** The first version assumes one dish per photo. Realistic multi-item
   plates need segmentation or detection and are out of scope for now.
 
+## Use it in your own app
+
+The inference path ships as a library, so this does not have to be used as a whole
+application. Install the client and the ONNX runtime for your platform:
+
+```bash
+npm install @plate-vision/client onnxruntime-web
+```
+
+```ts
+import { load, decodeImage } from "@plate-vision/client";
+
+const pv = await load({ model: modelUrl, bundle });
+const result = await pv.analyse(await decodeImage(file));
+
+result.dishes[0];  // { key, label, confidence }
+result.nutrition;  // { energy: { low, median, high }, ... } or null
+```
+
+The same import resolves to `onnxruntime-react-native` under React Native. Preprocessing
+is inside the ONNX graph, so there is nothing to reimplement per platform.
+
+`result.nutrition` is `null` when the loaded artifact's nutrition head is untrained, which
+is true of the currently published weights. The library refuses to return numbers derived
+from random weights rather than letting them reach a UI looking like measurements. See
+[packages/client](packages/client#readme).
+
+**The code is MIT. The published weights are not** — they are trained on Food-101, whose
+images are not ETH Zurich's to relicense. Treat them as research use only, and train your
+own for anything you intend to ship.
+
 ## Repo layout
 
 ```
-model/     PyTorch training, evaluation, and ONNX export
-app/       Expo React Native app (Android)
-web/       Vite browser demo
-shared/    model_meta.json, the single source of truth for the model contract
+model/             PyTorch training, evaluation, and ONNX export
+app/               Expo React Native app (Android)
+web/               Vite browser demo
+packages/client/   @plate-vision/client, the npm library the app and demo both use
+shared/            model_meta.json, the single source of truth for the model contract
 ```
 
 `shared/model_meta.json` defines input shape, layout, dtype, output names, and preprocessing
