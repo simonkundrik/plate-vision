@@ -202,8 +202,11 @@ is inside the ONNX graph, so there is nothing to reimplement per platform.
 
 `result.nutrition` is `null` when the loaded artifact's nutrition head is untrained, which
 is true of the currently published weights. The library refuses to return numbers derived
-from random weights rather than letting them reach a UI looking like measurements. See
-[packages/client](packages/client#readme).
+from random weights rather than letting them reach a UI looking like measurements.
+
+**Read [INTEGRATING.md](INTEGRATING.md) before shipping this in anything.** It covers the
+three behaviours that surprise people in review rather than in development, and the licence
+position in detail.
 
 **The code is MIT. The published weights are not** — they are trained on Food-101, whose
 images are not ETH Zurich's to relicense. Treat them as research use only, and train your

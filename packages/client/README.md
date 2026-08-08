@@ -75,6 +75,12 @@ This is deliberate. The alternative is every platform reimplementing the same Im
 constants and the same interpolation, and when one drifts nothing crashes: the app keeps
 working and quietly returns wrong calories.
 
+## Before you ship
+
+[INTEGRATING.md](https://github.com/simonkundrik/plate-vision/blob/main/INTEGRATING.md)
+covers what surprises people in review: nullable nutrition, intervals rather than numbers,
+and that the headline 86% is 59% on photos taken by strangers.
+
 ## Model artifacts and licensing
 
 **The code in this package is MIT.** The model weights are not covered by it.
