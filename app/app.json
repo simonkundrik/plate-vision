@@ -18,17 +18,22 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
         "backgroundColor": "#0B0B0C"
       },
       "package": "dev.simonkundrik.platevision",
-      "edgeToEdgeEnabled": true
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "plugins": [
       [
         "expo-camera",
         {
-          "cameraPermission": "plate-vision uses the camera to photograph your meal. The photo is analysed on this device and is not uploaded."
+          "cameraPermission": "plate-vision uses the camera to photograph your meal. The photo is analysed on this device and is not uploaded.",
+          "recordAudioAndroidPermission": false
         }
       ],
       "expo-dev-client",
@@ -37,7 +42,10 @@
     "extra": {
       "// model": "Where the app fetches the ONNX artifact and its manifest. Both are published on GitHub Releases rather than bundled: the model is tens of megabytes and would otherwise sit in every APK and in this repository. Left empty here so the repo carries no URL that pretends to be live; set them for a build via EXPO_PUBLIC_MODEL_URL / EXPO_PUBLIC_BUNDLE_URL or by editing this block.",
       "modelUrl": "",
-      "bundleUrl": ""
+      "bundleUrl": "",
+      "eas": {
+        "projectId": "235fada8-9258-4324-a496-1fd31bee6279"
+      }
     }
   }
 }
