@@ -12,9 +12,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-# model/platevision/meta.py -> model/platevision -> model -> repo root
-REPO_ROOT = Path(__file__).resolve().parents[2]
-META_PATH = REPO_ROOT / "shared" / "model_meta.json"
+from platevision._contract import contract_path
+
+META_PATH = contract_path("model_meta.json")
 
 # The only preprocessing order this codebase implements. Both the training eval transform
 # and the ONNX exporter are written against it, so an edit to the contract that nothing

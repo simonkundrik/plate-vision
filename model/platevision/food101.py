@@ -13,9 +13,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from platevision.meta import REPO_ROOT
+from platevision._contract import contract_path
 
-LABELS_PATH = REPO_ROOT / "shared" / "food101_labels.json"
+LABELS_PATH = contract_path("food101_labels.json")
 
 DOWNLOAD_URL = "https://data.vision.ee.ethz.ch/cvl/food-101.tar.gz"
 
