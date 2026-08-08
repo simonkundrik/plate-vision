@@ -37,7 +37,8 @@
         }
       ],
       "expo-dev-client",
-      "onnxruntime-react-native"
+      "onnxruntime-react-native",
+      "./plugins/withTurboModuleInterop"
     ],
     "extra": {
       "// model": "Where the app fetches the ONNX artifact and its manifest. Both are published on GitHub Releases rather than bundled: the model is tens of megabytes and would otherwise sit in every APK and in this repository. Override for a build with EXPO_PUBLIC_MODEL_URL / EXPO_PUBLIC_BUNDLE_URL. The pinned tag is deliberate: 'latest' would change the model under a build that was tested against a different one.",

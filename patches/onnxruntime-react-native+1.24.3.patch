@@ -14,3 +14,22 @@ index 41b4359..1be0805 100644
      extractLibs "com.facebook.fbjni:fbjni:+:headers"
      extractLibs "com.facebook.fbjni:fbjni:+"
    }
+diff --git a/node_modules/onnxruntime-react-native/android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimeModule.java b/node_modules/onnxruntime-react-native/android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimeModule.java
+index c362e6a..50566cd 100644
+--- a/node_modules/onnxruntime-react-native/android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimeModule.java
++++ b/node_modules/onnxruntime-react-native/android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimeModule.java
+@@ -47,8 +47,13 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
+     try {
+       System.loadLibrary("onnxruntimejsi");
+       JavaScriptContextHolder jsContext = getReactApplicationContext().getJavaScriptContextHolder();
++      // CatalystInstance *is* the bridge, and Expo SDK 57 generates a bridgeless app, where
++      // BridgelessReactContext.getCatalystInstance() either throws or returns a shim.
++      // ReactContext exposes getJSCallInvokerHolder() directly and BridgelessReactContext
++      // implements it against the ReactHost, so this reaches the same object without going
++      // through an architecture that no longer exists.
+       CallInvokerHolderImpl jsCallInvokerHolder =
+-        (CallInvokerHolderImpl) getReactApplicationContext().getCatalystInstance().getJSCallInvokerHolder();
++        (CallInvokerHolderImpl) getReactApplicationContext().getJSCallInvokerHolder();
+       nativeInstall(jsContext.get(), jsCallInvokerHolder);
+       return true;
+     } catch (Exception e) {
