@@ -21,7 +21,15 @@
   "devDependencies": {
     "patch-package": "^8.0.1"
   },
+  "comments": {
+    "overrides": "One Vite across the workspace. vitest pulls Vite 5 and web needs Vite 6, and two copies mean vite-plugin-static-copy's Plugin type and web's Plugin type are different types with the same name.",
+    "optionalDependencies": "Not a dependency anyone imports. npm records only the current platform's optional binaries when a lockfile is regenerated (npm/cli#4828), so a lockfile written on Windows omits the Linux rollup binary and every CI install fails inside tsup's declaration build. Listing both platforms explicitly is the documented workaround. Keep the version in step with rollup itself."
+  },
   "overrides": {
     "vite": "^6.4.3"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.62.4",
+    "@rollup/rollup-win32-x64-msvc": "4.62.4"
   }
 }
