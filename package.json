@@ -5,6 +5,7 @@
   "license": "MIT",
   "workspaces": [
     "app",
+    "web",
     "packages/*"
   ],
   "scripts": {
@@ -19,5 +20,8 @@
   },
   "devDependencies": {
     "patch-package": "^8.0.1"
+  },
+  "overrides": {
+    "vite": "^6.4.3"
   }
 }

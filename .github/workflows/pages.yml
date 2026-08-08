@@ -1,0 +1,73 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "packages/client/**"
+      - "shared/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+    inputs:
+      model_tag:
+        description: "Model release tag to deploy"
+        default: model-v0.1.0
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # The model is fetched at deploy time and served from the site's own origin. GitHub
+      # Release assets carry no Access-Control-Allow-Origin header, so a browser cannot
+      # fetch them cross-origin. React Native is not subject to CORS, which is why the app
+      # uses the release URLs directly and this cannot.
+      #
+      # fetch-model verifies size and SHA-256 against the manifest, so a truncated download
+      # fails the build rather than shipping a model that returns wrong predictions.
+      - name: Fetch the model
+        run: npm run fetch-model --workspace web
+        env:
+          MODEL_TAG: ${{ inputs.model_tag || 'model-v0.1.0' }}
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build --workspace web
+        env:
+          PAGES_BASE: /plate-vision/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
