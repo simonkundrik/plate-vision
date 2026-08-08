@@ -22,6 +22,12 @@ export { scaleInterval } from "@plate-vision/client";
 export type MealAnalysis = Analysis & {
   /** Local URI of the captured photo. */
   photoUri: string;
-  /** True while the real model is not yet wired in. Surfaced in the UI, not hidden. */
+  /**
+   * Retained from the stub era and now always false.
+   *
+   * Kept because the notice it drives is the one thing that must never be removed by
+   * accident: if a future change reintroduces synthetic results, the banner has to come
+   * back with them rather than being rebuilt from memory.
+   */
   placeholder: boolean;
 };

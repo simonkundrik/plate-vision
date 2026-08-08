@@ -31,7 +31,13 @@
           "cameraPermission": "plate-vision uses the camera to photograph your meal. The photo is analysed on this device and is not uploaded."
         }
       ],
-      "expo-dev-client"
-    ]
+      "expo-dev-client",
+      "onnxruntime-react-native"
+    ],
+    "extra": {
+      "// model": "Where the app fetches the ONNX artifact and its manifest. Both are published on GitHub Releases rather than bundled: the model is tens of megabytes and would otherwise sit in every APK and in this repository. Left empty here so the repo carries no URL that pretends to be live; set them for a build via EXPO_PUBLIC_MODEL_URL / EXPO_PUBLIC_BUNDLE_URL or by editing this block.",
+      "modelUrl": "",
+      "bundleUrl": ""
+    }
   }
 }

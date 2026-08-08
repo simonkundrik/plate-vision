@@ -1,61 +1,72 @@
 /**
  * Inference boundary.
  *
- * The real implementation loads the exported ONNX graph through `@plate-vision/client` and
- * lands in the next PR. Until then this returns a fixed plausible result so the screens can
- * be built and reviewed against something.
- *
- * The stub reports `placeholder: true` and the UI says so on screen. A demo that silently
- * shows invented numbers is how a portfolio project ends up claiming something it cannot
- * do, and the failure is invisible precisely because the numbers look reasonable.
- *
- * It returns the library's own `Analysis` shape rather than a parallel one, so swapping the
- * stub for a real `PlateVision.analyse` call changes what produces the value and nothing
- * that consumes it.
+ * Acquires the model, decodes the captured photo, and runs it through
+ * `@plate-vision/client`. Everything the result means, including whether a nutrition
+ * estimate is legitimate at all, is the library's decision; this file only carries the
+ * answer to the screen along with the photo it came from.
  */
 
-import { labelForIndex, keyForIndex, classCount } from "@plate-vision/client";
+import { load, type PlateVision } from "@plate-vision/client";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 
 import type { MealAnalysis } from "../types";
+import { DECODE_MAX_EDGE, decodeBase64Jpeg } from "./decode";
+import { ModelUnavailableError, resolveModel } from "./model";
 
-/** Roughly a plate of carbonara, so the screens are exercised with believable magnitudes. */
-const PLACEHOLDER_ENERGY = { low: 410, median: 620, high: 980 };
+export { ModelUnavailableError } from "./model";
 
-/** Resolve a class key to its contract index so the stub speaks in the model's terms. */
-const indexOfKey = (key: string): number => {
-  for (let index = 0; index < classCount; index += 1) {
-    if (keyForIndex(index) === key) return index;
+/**
+ * One session, kept alive across photos.
+ *
+ * Creating an ONNX session parses and prepares the whole graph, which is the expensive
+ * part; doing it per photo would put a second of avoidable work in front of every result
+ * and make the on-device latency claim meaningless.
+ */
+let session: Promise<PlateVision> | null = null;
+
+const sessionFor = async (): Promise<{ pv: PlateVision }> => {
+  if (!session) {
+    session = (async () => {
+      const { path, bundle } = await resolveModel();
+      return load({ model: path, bundle });
+    })();
   }
-  throw new Error(`${key} is not in the label contract`);
+
+  try {
+    return { pv: await session };
+  } catch (error) {
+    // A failed load must not be cached as a permanent failure. The usual cause is a
+    // network problem fetching the manifest, and the next attempt should be allowed to
+    // succeed rather than returning the same stale rejection forever.
+    session = null;
+    throw error;
+  }
 };
 
-const PLACEHOLDER_DISHES = [
-  { key: "spaghetti_carbonara", confidence: 0.71 },
-  { key: "spaghetti_bolognese", confidence: 0.14 },
-  { key: "pad_thai", confidence: 0.05 },
-].map(({ key, confidence }) => ({
-  key,
-  label: labelForIndex(indexOfKey(key)),
-  confidence,
-}));
+/** Reduce the photo and hand back its JPEG bytes, base64 as expo-image-manipulator emits. */
+const photoBytes = async (photoUri: string): Promise<string> => {
+  const context = ImageManipulator.manipulate(photoUri);
+  // The model resizes internally, so this is about decode cost rather than correctness:
+  // a full-resolution phone photo decoded in JavaScript is seconds of work for pixels the
+  // graph immediately discards.
+  context.resize({ width: DECODE_MAX_EDGE });
+
+  const image = await context.renderAsync();
+  const saved = await image.saveAsync({ format: SaveFormat.JPEG, base64: true });
+
+  if (!saved.base64) throw new Error("the image manipulator returned no image data");
+  return saved.base64;
+};
 
 export const analyse = async (photoUri: string): Promise<MealAnalysis> => {
-  const started = Date.now();
+  const { pv } = await sessionFor();
+  const image = decodeBase64Jpeg(await photoBytes(photoUri));
+  const result = await pv.analyse(image);
 
-  // Stands in for the model call. No artificial delay: pretending to be slow would make
-  // the eventual real latency look like a regression.
-  return {
-    photoUri,
-    dishes: PLACEHOLDER_DISHES,
-    nutrition: {
-      energy: PLACEHOLDER_ENERGY,
-      protein: { low: 14, median: 24, high: 38 },
-      fat: { low: 16, median: 30, high: 52 },
-      carbohydrate: { low: 48, median: 71, high: 104 },
-      mass: { low: 210, median: 320, high: 470 },
-    },
-    nutritionUnavailableReason: null,
-    inferenceMs: Date.now() - started,
-    placeholder: true,
-  };
+  return { ...result, photoUri, placeholder: false };
 };
+
+/** Whether a thrown error is the app's own "no usable model" case rather than a bug. */
+export const isModelUnavailable = (error: unknown): error is ModelUnavailableError =>
+  error instanceof ModelUnavailableError;

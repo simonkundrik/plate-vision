@@ -3,8 +3,9 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { analyse } from "./src/inference";
+import { analyse, isModelUnavailable } from "./src/inference";
 import { CaptureScreen } from "./src/screens/CaptureScreen";
+import { ProblemScreen } from "./src/screens/ProblemScreen";
 import { ResultScreen } from "./src/screens/ResultScreen";
 import { colour } from "./src/theme";
 import type { MealAnalysis } from "./src/types";
@@ -12,15 +13,26 @@ import type { MealAnalysis } from "./src/types";
 type Stage =
   | { name: "capture" }
   | { name: "working" }
-  | { name: "result"; analysis: MealAnalysis };
+  | { name: "result"; analysis: MealAnalysis }
+  | { name: "problem"; title: string; detail: string };
 
 export default function App() {
   const [stage, setStage] = useState<Stage>({ name: "capture" });
 
   const onCaptured = useCallback(async (uri: string) => {
     setStage({ name: "working" });
-    const analysis = await analyse(uri);
-    setStage({ name: "result", analysis });
+    try {
+      setStage({ name: "result", analysis: await analyse(uri) });
+    } catch (error) {
+      // A model that could not be loaded is a state the app understands and can explain.
+      // Anything else is a bug, and saying so is more useful than dressing it up as a
+      // configuration problem the user could act on.
+      setStage({
+        name: "problem",
+        title: isModelUnavailable(error) ? "No model available" : "Analysis failed",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
   }, []);
 
   const onRetake = useCallback(() => setStage({ name: "capture" }), []);
@@ -37,6 +49,9 @@ export default function App() {
         )}
         {stage.name === "result" && (
           <ResultScreen analysis={stage.analysis} onRetake={onRetake} />
+        )}
+        {stage.name === "problem" && (
+          <ProblemScreen title={stage.title} detail={stage.detail} onRetry={onRetake} />
         )}
       </View>
     </SafeAreaProvider>
