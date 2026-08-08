@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field
 import torch
 from torch import nn
 
+from platevision import distillation
 from platevision.engine import AverageMeter
 from platevision.quantile import enforce_monotonic
 
@@ -66,6 +67,8 @@ def train_regression_epoch(
     model_ema=None,
     ingredient_criterion=None,
     ingredient_weight: float = 0.0,
+    distiller=None,
+    kd_weight: float = 0.0,
 ) -> RegressionResult:
     model.train()
     loss_meter = AverageMeter()
@@ -98,14 +101,27 @@ def train_regression_epoch(
 
         optimizer.zero_grad(set_to_none=True)
 
-        use_aux = ingredients is not None and ingredient_criterion is not None
+        use_ingredients = ingredients is not None and ingredient_criterion is not None
+        use_kd = distiller is not None and kd_weight > 0
 
         with torch.amp.autocast(device_type=device.type, enabled=amp_enabled):
-            if use_aux:
-                predictions, ingredient_logits = model.forward_with_ingredients(images)
-                loss = criterion(predictions, targets) + ingredient_weight * ingredient_criterion(
-                    ingredient_logits, ingredients
-                )
+            if use_ingredients or use_kd:
+                predictions, ingredient_logits, class_logits = model.forward_with_aux(images)
+                loss = criterion(predictions, targets)
+
+                if use_ingredients:
+                    loss = loss + ingredient_weight * ingredient_criterion(
+                        ingredient_logits, ingredients
+                    )
+
+                if use_kd and class_logits is not None:
+                    # The teacher scores the same augmented image the student sees. A cached
+                    # opinion would describe a crop the student never trains on, and the
+                    # resulting targets are wrong in a way no loss curve reveals.
+                    teacher_logits = distiller.teacher_logits(images)
+                    loss = loss + kd_weight * distillation.kd_loss(
+                        class_logits, teacher_logits, distiller.config.temperature
+                    )
             else:
                 predictions = model(images)
                 loss = criterion(predictions, targets)
@@ -170,9 +186,9 @@ def evaluate_regression(
     all_predictions: list[torch.Tensor] = []
     all_targets: list[torch.Tensor] = []
 
-    for images, targets in loader:
-        images = images.to(device, non_blocking=True)
-        targets = targets.to(device, non_blocking=True)
+    for batch in loader:
+        images = batch[0].to(device, non_blocking=True)
+        targets = batch[1].to(device, non_blocking=True)
 
         predictions = model(images)
         loss_meter.update(criterion(predictions, targets).item(), targets.size(0))

@@ -30,8 +30,10 @@ from platevision import (
     checkpoint,
     conformal,
     datasets,
+    distillation,
     ema,
     engine,
+    food101,
     meta,
     mixing,
     models,
@@ -189,6 +191,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     recipe.add_argument("--ingredient-min-count", type=int, default=20)
     recipe.add_argument(
+        "--kd-weight",
+        type=float,
+        default=0.0,
+        help="weight on distilling the frozen Food-101 classifier; 0 disables",
+    )
+    recipe.add_argument("--kd-temperature", type=float, default=4.0)
+    recipe.add_argument(
         "--zoom-out",
         type=float,
         default=1.6,
@@ -219,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         pretrained=args.backbone_from is None,
         drop_rate=args.drop_rate,
         num_ingredients=len(vocabulary),
+        num_classes=len(food101.class_keys()) if args.kd_weight > 0 else 0,
     )
     if args.backbone_from:
         payload = checkpoint.load_checkpoint(args.backbone_from)
@@ -259,6 +269,20 @@ def main(argv: list[str] | None = None) -> int:
         ingredient_criterion = torch.nn.BCEWithLogitsLoss(pos_weight=weight)
         print(f"ingredient loss weight: {args.ingredient_weight}")
 
+    # Distilling the classifier the backbone came from, on the same augmented images the
+    # student sees. Fine-tuning on 2,424 cafeteria trays otherwise erodes the dish semantics
+    # that make density predictable, and it invalidates the stage-one classification head,
+    # which CombinedModel currently works around by re-fitting a linear probe before export.
+    distiller = None
+    if args.kd_weight > 0:
+        if not args.backbone_from:
+            raise SystemExit("--kd-weight needs --backbone-from to distil from")
+        teacher, _ = checkpoint.restore_classifier(args.backbone_from)
+        distiller = distillation.Distiller(
+            teacher, distillation.DistillationConfig(alpha=1.0, temperature=args.kd_temperature)
+        ).to(device)
+        print(f"distilling the classifier: weight {args.kd_weight}, T {args.kd_temperature}")
+
     criterion = PinballLoss(quantiles).to(device)
     optimizer = torch.optim.AdamW(models.parameter_groups(model, args.weight_decay), lr=args.lr)
 
@@ -297,6 +321,8 @@ def main(argv: list[str] | None = None) -> int:
             model_ema=model_ema,
             ingredient_criterion=ingredient_criterion,
             ingredient_weight=args.ingredient_weight,
+            distiller=distiller,
+            kd_weight=args.kd_weight,
         )
         history.append(train_result.as_dict())
         print(train_result.format(), flush=True)
