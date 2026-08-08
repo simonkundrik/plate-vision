@@ -1,49 +1,27 @@
-/** Shapes shared between the inference layer and the screens. */
-
-export type DishPrediction = {
-  /** Food-101 class key, e.g. "spaghetti_carbonara". */
-  key: string;
-  /** Human-readable name for display. */
-  label: string;
-  /** Softmax probability in [0, 1]. */
-  confidence: number;
-};
-
 /**
- * One nutrition target as an interval rather than a number.
+ * App-level shapes.
  *
- * The three values are the model's 5th, 50th, and 95th percentile predictions. Storing
- * them as a triple rather than collapsing to `median` is deliberate: portion size cannot
- * be recovered from a photograph, so a single figure would be false precision, and the
- * interface is built to show the range as the primary reading.
+ * The result shape itself comes from `@plate-vision/client`, which is the package this app
+ * exists to demonstrate. Redeclaring it here would create a second definition that drifts
+ * from the library the app actually calls, so the app only adds what is genuinely its own:
+ * the photo it captured, and whether the numbers came from a real model.
  */
-export type Interval = {
-  low: number;
-  median: number;
-  high: number;
-};
 
-export type NutritionEstimate = {
-  energy: Interval;
-  protein: Interval;
-  fat: Interval;
-  carbohydrate: Interval;
-  mass: Interval;
-};
+import type { Analysis } from "@plate-vision/client";
 
-export type Analysis = {
+export type {
+  Analysis,
+  DishPrediction,
+  Interval,
+  NutritionEstimate,
+} from "@plate-vision/client";
+
+export { scaleInterval } from "@plate-vision/client";
+
+/** A library result plus the things only the app knows about it. */
+export type MealAnalysis = Analysis & {
+  /** Local URI of the captured photo. */
   photoUri: string;
-  dishes: DishPrediction[];
-  nutrition: NutritionEstimate;
-  /** Milliseconds spent in the model, shown so the on-device claim is checkable. */
-  inferenceMs: number;
   /** True while the real model is not yet wired in. Surfaced in the UI, not hidden. */
   placeholder: boolean;
 };
-
-/** Scale every interval by a portion multiplier the user picked. */
-export const scaleInterval = (interval: Interval, factor: number): Interval => ({
-  low: interval.low * factor,
-  median: interval.median * factor,
-  high: interval.high * factor,
-});

@@ -7,9 +7,12 @@ import { analyse } from "./src/inference";
 import { CaptureScreen } from "./src/screens/CaptureScreen";
 import { ResultScreen } from "./src/screens/ResultScreen";
 import { colour } from "./src/theme";
-import type { Analysis } from "./src/types";
+import type { MealAnalysis } from "./src/types";
 
-type Stage = { name: "capture" } | { name: "working" } | { name: "result"; analysis: Analysis };
+type Stage =
+  | { name: "capture" }
+  | { name: "working" }
+  | { name: "result"; analysis: MealAnalysis };
 
 export default function App() {
   const [stage, setStage] = useState<Stage>({ name: "capture" });

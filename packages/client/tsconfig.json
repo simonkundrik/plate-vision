@@ -11,6 +11,10 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
+    // tsup's declaration build injects `baseUrl`, which TypeScript 6 rejects as deprecated.
+    // The option is not set in this file and is not ours to remove; this absorbs it until
+    // tsup stops emitting it. Remove once that lands.
+    "ignoreDeprecations": "6.0",
     "noEmit": true,
     "types": ["node", "vitest/globals"]
   },

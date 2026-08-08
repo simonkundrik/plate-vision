@@ -12,6 +12,7 @@ import type { LoadOptions, RgbImage } from "./types";
 export { PlateVision } from "./plate-vision";
 export { classCount, contract, labels, labelForIndex, keyForIndex } from "./contract";
 export { enforceMonotonic, softmax, topK } from "./postprocess";
+export { scaleInterval, scaleNutrition } from "./portion";
 export { stripAlpha } from "./session";
 export type {
   Analysis,
