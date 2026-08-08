@@ -26,7 +26,16 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from platevision import checkpoint, datasets, engine, meta, models, regression, transforms
+from platevision import (
+    checkpoint,
+    conformal,
+    datasets,
+    engine,
+    meta,
+    models,
+    regression,
+    transforms,
+)
 from platevision.quantile import PinballLoss
 from platevision.targets import TargetTransform
 
@@ -52,11 +61,24 @@ def build(args, device):
         f"{train_stats.nonpositive_calories:,} with non-positive calories"
     )
     print(f"val:   {val_stats.kept:,} kept of {val_stats.listed:,} listed")
+
+    # Held out of training entirely, so conformal calibration sees predictions the model was
+    # never fitted to. Calibrating on data the model has trained on measures how well it
+    # memorised, produces offsets that are far too small, and certifies nothing.
+    calibration_samples: list = []
+    if args.calibration_fraction > 0:
+        shuffled = list(train_samples)
+        random.Random(args.seed).shuffle(shuffled)
+        cut = max(1, int(len(shuffled) * args.calibration_fraction))
+        calibration_samples, train_samples = shuffled[:cut], shuffled[cut:]
+        print(f"       {len(calibration_samples):,} held out for conformal calibration")
+
     if args.limit_train or args.limit_val:
         print(f"using: {len(train_samples):,} train, {len(val_samples):,} val")
 
-    # Fitted on the training split only. Fitting across train and test leaks the test
-    # distribution into training in a way no loss curve reveals.
+    # Fitted on the training split only, and after the calibration split is removed. Fitting
+    # across train and test leaks the test distribution into training in a way no loss curve
+    # reveals.
     target_transform = TargetTransform.fit(s.targets for s in train_samples)
     print(f"target log-space mean: {[round(v, 2) for v in target_transform.mean]}")
 
@@ -76,7 +98,19 @@ def build(args, device):
         train_ds, batch_size=args.batch_size, shuffle=True, drop_last=True, **common
     )
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, **common)
-    return train_loader, val_loader, target_transform
+
+    calibration_loader = None
+    if calibration_samples:
+        calibration_ds = datasets.Nutrition5kDataset(
+            calibration_samples,
+            transform=transforms.eval_transform(),
+            target_transform=target_transform,
+        )
+        calibration_loader = DataLoader(
+            calibration_ds, batch_size=args.batch_size, shuffle=False, **common
+        )
+
+    return train_loader, val_loader, calibration_loader, target_transform
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -103,6 +137,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit-train", type=int)
     parser.add_argument("--limit-val", type=int)
     parser.add_argument("--log-every", type=int, default=20)
+    parser.add_argument(
+        "--calibration-fraction",
+        type=float,
+        default=0.12,
+        help="share of train held out to fit conformal offsets; 0 disables",
+    )
+    parser.add_argument("--conformal-alpha", type=float, default=0.10)
     args = parser.parse_args(argv)
 
     engine.seed_everything(args.seed)
@@ -113,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     quantiles = meta.quantiles()
     median_index = quantiles.index(0.5)
 
-    train_loader, val_loader, target_transform = build(args, device)
+    train_loader, val_loader, calibration_loader, target_transform = build(args, device)
 
     model = models.NutritionModel(
         args.backbone,
@@ -207,7 +248,48 @@ def main(argv: list[str] | None = None) -> int:
         (args.out / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
 
     print(f"\nbest calorie MAE: {best:.1f} kcal")
+
+    if calibration_loader is not None:
+        fit_conformal(args, device, target_transform, calibration_loader)
+
     return 0
+
+
+def fit_conformal(args, device, target_transform, loader) -> None:
+    """Fit conformal offsets on the held-out split, using the best checkpoint.
+
+    Pinball loss makes a quantile head's stated level an aspiration, not a guarantee. The
+    first full run of this script reached 51.6 kcal MAE with its 90% interval covering
+    64.6% of the test set: the median was well calibrated and both bounds were pulled
+    inward. Conformal prediction repairs that after the fact, and unlike a tuned fudge
+    factor it carries a finite-sample coverage guarantee.
+    """
+    model, _, _ = checkpoint.restore_nutrition_model(args.out / "best.pt")
+    model.to(device).eval()
+
+    predictions, targets = [], []
+    with torch.no_grad():
+        for images, batch_targets in loader:
+            predictions.append(model(images.to(device)).float().cpu())
+            targets.append(batch_targets.float().cpu())
+
+    # Real units, and monotonic first: an inverted interval makes a conformity score
+    # meaningless, since the miss would be measured against the wrong bound.
+    stacked = regression.enforce_monotonic(torch.cat(predictions))
+    predicted = target_transform.inverse(stacked)
+    actual = target_transform.inverse(torch.cat(targets))
+
+    calibration = conformal.ConformalCalibration.fit(
+        predicted, actual, meta.target_keys(), alpha=args.conformal_alpha
+    )
+
+    path = args.out / "conformal.json"
+    path.write_text(json.dumps(calibration.to_dict(), indent=2), encoding="utf-8")
+
+    print(f"\nconformal calibration on {calibration.calibration_size:,} held-out dishes")
+    for key, offset in zip(calibration.keys, calibration.offsets, strict=True):
+        print(f"  {key:<14} widen by +/- {offset:.1f}")
+    print(f"  wrote {path}")
 
 
 if __name__ == "__main__":
