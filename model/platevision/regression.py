@@ -61,6 +61,9 @@ def train_regression_epoch(
     scaler=None,
     max_grad_norm: float | None = None,
     log_every: int = 0,
+    mixing=None,
+    target_transform=None,
+    model_ema=None,
 ) -> RegressionResult:
     model.train()
     loss_meter = AverageMeter()
@@ -70,6 +73,16 @@ def train_regression_epoch(
     for step, (images, targets) in enumerate(loader):
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+
+        # Regression blends the target rather than the loss. Pinball loss is not linear in
+        # its target, so weighting two losses minimises at a weighted quantile instead of at
+        # the interpolated value, which is not what a half-and-half plate means. The
+        # transform matters too: the targets are standardised log1p, and interpolating
+        # there is a geometric mean.
+        mixed = mixing(images, targets) if mixing is not None else None
+        if mixed is not None:
+            images = mixed.images
+            targets = mixed.blended(target_transform)
 
         optimizer.zero_grad(set_to_none=True)
 
@@ -92,6 +105,11 @@ def train_regression_epoch(
 
         if scheduler is not None:
             scheduler.step()
+
+        # After the optimiser step, so the average tracks the weights that exist rather
+        # than the ones from before this batch.
+        if model_ema is not None:
+            model_ema.update(model)
 
         loss_meter.update(loss.item(), targets.size(0))
         if log_every and step % log_every == 0:

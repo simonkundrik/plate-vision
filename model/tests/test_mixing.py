@@ -13,6 +13,7 @@ import torch
 from torch import nn
 
 from platevision import mixing
+from platevision.targets import TargetTransform
 
 
 @pytest.fixture
@@ -238,3 +239,90 @@ def test_dominant_target_follows_lambda(batch, lam, expect_a):
     result = mixing.MixResult(images, targets, flipped, lam=lam)
     expected = targets if expect_a else flipped
     assert torch.equal(result.dominant_target, expected)
+
+
+class TestBlendedTargetsForRegression:
+    """Regression mixes the target; classification mixes the loss.
+
+    Cross-entropy is linear in its target, so weighting two losses is identical to
+    weighting two one-hot vectors. Pinball loss is not, and weighting two of them minimises
+    at a weighted quantile rather than at the interpolated value.
+    """
+
+    @staticmethod
+    def result(a, b, lam):
+        return mixing.MixResult(
+            images=torch.zeros(2, 3, 4, 4),
+            target_a=torch.tensor(a, dtype=torch.float32),
+            target_b=torch.tensor(b, dtype=torch.float32),
+            lam=lam,
+        )
+
+    def test_interpolates_linearly_without_a_transform(self):
+        blended = self.result([[10.0]], [[20.0]], 0.25).blended()
+        assert blended.item() == pytest.approx(17.5)
+
+    def test_lambda_one_returns_the_first_target(self):
+        blended = self.result([[10.0]], [[20.0]], 1.0).blended()
+        assert blended.item() == pytest.approx(10.0)
+
+    def test_blends_in_real_units_when_given_a_transform(self):
+        """The failure this exists to prevent, worth 20% of a label.
+
+        Targets are stored as standardised log1p. Interpolating there is a geometric mean:
+        a 100 kcal dish blended with a 400 kcal dish at lam 0.5 gives 250 kcal in real
+        units and 200 in log space. Half of each plate is 250.
+        """
+        transform = TargetTransform.fit([[100.0], [400.0], [250.0]], keys=("energy",))
+
+        encoded_a = transform.forward(torch.tensor([[100.0]]))
+        encoded_b = transform.forward(torch.tensor([[400.0]]))
+        mixed = mixing.MixResult(
+            images=torch.zeros(1, 3, 4, 4), target_a=encoded_a, target_b=encoded_b, lam=0.5
+        )
+
+        real = transform.inverse(mixed.blended(transform))
+        assert real.item() == pytest.approx(250.0, rel=1e-4)
+
+    def test_log_space_blending_really_does_differ(self):
+        # Without this, the test above could pass on a transform that happened to be linear.
+        transform = TargetTransform.fit([[100.0], [400.0], [250.0]], keys=("energy",))
+        encoded_a = transform.forward(torch.tensor([[100.0]]))
+        encoded_b = transform.forward(torch.tensor([[400.0]]))
+        mixed = mixing.MixResult(
+            images=torch.zeros(1, 3, 4, 4), target_a=encoded_a, target_b=encoded_b, lam=0.5
+        )
+
+        naive = transform.inverse(mixed.blended())
+        assert naive.item() == pytest.approx(200.0, rel=0.02)
+        assert abs(naive.item() - 250.0) > 40
+
+    def test_blending_is_monotonic_in_lambda(self):
+        transform = TargetTransform.fit([[100.0], [400.0], [250.0]], keys=("energy",))
+        encoded_a = transform.forward(torch.tensor([[100.0]]))
+        encoded_b = transform.forward(torch.tensor([[400.0]]))
+
+        values = []
+        for lam in (0.0, 0.25, 0.5, 0.75, 1.0):
+            mixed = mixing.MixResult(
+                images=torch.zeros(1, 3, 4, 4), target_a=encoded_a, target_b=encoded_b, lam=lam
+            )
+            values.append(transform.inverse(mixed.blended(transform)).item())
+
+        assert values == sorted(values, reverse=True)
+
+    def test_handles_all_five_targets(self):
+        rows = [[100.0, 5.0, 3.0, 12.0, 150.0], [400.0, 20.0, 15.0, 40.0, 300.0]]
+        transform = TargetTransform.fit(rows)
+        encoded = transform.forward(torch.tensor(rows, dtype=torch.float32))
+
+        mixed = mixing.MixResult(
+            images=torch.zeros(2, 3, 4, 4),
+            target_a=encoded[:1],
+            target_b=encoded[1:],
+            lam=0.5,
+        )
+        real = transform.inverse(mixed.blended(transform))
+
+        expected = [(a + b) / 2 for a, b in zip(rows[0], rows[1], strict=True)]
+        assert real.squeeze(0).tolist() == pytest.approx(expected, rel=1e-3)
