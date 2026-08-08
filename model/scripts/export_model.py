@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 from torch import nn
 
-from platevision import checkpoint, datasets, export, meta, models, quantization
+from platevision import bundle, checkpoint, datasets, export, meta, models, quantization
 
 OUTPUT_NAMES = ["logits", "nutrition_quantiles"]
 
@@ -217,18 +217,21 @@ def main(argv: list[str] | None = None) -> int:
         else:
             artifact = int8
 
-    bundle = {
-        "schema_version": 1,
-        "generated_utc": datetime.now(UTC).isoformat(),
-        "artifact": artifact.name,
-        "contract": "shared/model_meta.json",
-        "heads_trained": {"logits": True, "nutrition_quantiles": nutrition_trained},
-        "provenance": provenance,
-        "quantization": quant_report,
-    }
-    (args.out / "bundle.json").write_text(json.dumps(bundle, indent=2), encoding="utf-8")
+    # Size and hash travel with the manifest so a client can tell a complete download from
+    # a truncated one. A cut-off protobuf can still parse as a valid, shorter graph, and
+    # without this the failure looks like a bad model rather than a bad download.
+    digest = export.digest_artifact(artifact)
 
-    print(f"\n  wrote {artifact}")
+    manifest = bundle.build_bundle(
+        artifact=digest.as_dict(),
+        heads_trained={"logits": True, "nutrition_quantiles": nutrition_trained},
+        provenance=provenance,
+        quantization=quant_report,
+        generated_utc=datetime.now(UTC).isoformat(),
+    )
+    (args.out / "bundle.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    print(f"\n  wrote {artifact} ({digest.bytes / 1024**2:.2f} MB, sha256 {digest.sha256[:12]}…)")
     print(f"  wrote {args.out / 'bundle.json'}")
     return 0
 
