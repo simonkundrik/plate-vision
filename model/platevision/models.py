@@ -63,6 +63,7 @@ class NutritionModel(nn.Module):
         pretrained: bool = True,
         drop_rate: float = 0.3,
         num_ingredients: int = 0,
+        num_classes: int = 0,
     ) -> None:
         super().__init__()
         import timm
@@ -90,6 +91,15 @@ class NutritionModel(nn.Module):
             nn.Linear(self.feature_dim, num_ingredients) if num_ingredients else None
         )
 
+        # Also auxiliary, and also off forward(). Trained by distilling the frozen Food-101
+        # classifier, which does two things: it stops fine-tuning on 2,424 cafeteria trays
+        # from destroying the dish semantics the backbone arrived with, and it keeps this
+        # head valid against the fine-tuned backbone. CombinedModel otherwise needs the
+        # stage-one head re-fitted as a linear probe before export, because nutrition
+        # training invalidates it.
+        self.num_classes = num_classes
+        self.classifier_head = nn.Linear(self.feature_dim, num_classes) if num_classes else None
+
     @torch.no_grad()
     def _probe_feature_dim(self) -> int:
         from platevision.meta import input_size
@@ -105,17 +115,21 @@ class NutritionModel(nn.Module):
         features = self.dropout(self.backbone(x))
         return self.head(features).view(-1, self.num_targets, self.num_quantiles)
 
-    def forward_with_ingredients(self, x: torch.Tensor):
-        """Quantiles plus ingredient logits, sharing one backbone pass.
+    def forward_with_aux(self, x: torch.Tensor):
+        """Quantiles plus any auxiliary heads, sharing one backbone pass.
 
         Separate from forward() so the exported graph keeps the shape the contract
-        declares. Calling forward() and then the ingredient head would run the backbone
-        twice, which is the expensive part.
+        declares. Calling forward() and then each head would run the backbone once per
+        head, which is the expensive part.
+
+        Returns (quantiles, ingredient_logits, class_logits); either auxiliary output is
+        None when its head is absent.
         """
         features = self.dropout(self.backbone(x))
         quantiles = self.head(features).view(-1, self.num_targets, self.num_quantiles)
-        logits = self.ingredient_head(features) if self.ingredient_head is not None else None
-        return quantiles, logits
+        ingredients = self.ingredient_head(features) if self.ingredient_head is not None else None
+        classes = self.classifier_head(features) if self.classifier_head is not None else None
+        return quantiles, ingredients, classes
 
 
 class CombinedModel(nn.Module):

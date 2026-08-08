@@ -73,7 +73,7 @@ class TestAuxiliaryHeadStaysOffTheExportedGraph:
     """The contract declares two outputs. The ingredient head must not become a third."""
 
     @staticmethod
-    def model(num_ingredients: int):
+    def model(num_ingredients: int, num_classes: int = 0):
         from platevision.models import NutritionModel
 
         return NutritionModel(
@@ -82,6 +82,7 @@ class TestAuxiliaryHeadStaysOffTheExportedGraph:
             num_quantiles=3,
             pretrained=False,
             num_ingredients=num_ingredients,
+            num_classes=num_classes,
         )
 
     def test_forward_returns_only_quantiles(self):
@@ -89,15 +90,33 @@ class TestAuxiliaryHeadStaysOffTheExportedGraph:
         assert isinstance(out, torch.Tensor)
         assert out.shape == (2, 5, 3)
 
-    def test_forward_with_ingredients_returns_both(self):
-        quantiles, logits = self.model(7).forward_with_ingredients(torch.zeros(2, 3, 224, 224))
+    def test_forward_with_aux_returns_every_head(self):
+        quantiles, ingredients, classes = self.model(7, 101).forward_with_aux(
+            torch.zeros(2, 3, 224, 224)
+        )
         assert quantiles.shape == (2, 5, 3)
-        assert logits.shape == (2, 7)
+        assert ingredients.shape == (2, 7)
+        assert classes.shape == (2, 101)
 
-    def test_no_head_means_no_logits(self):
-        quantiles, logits = self.model(0).forward_with_ingredients(torch.zeros(1, 3, 224, 224))
+    def test_absent_heads_return_none(self):
+        quantiles, ingredients, classes = self.model(0, 0).forward_with_aux(
+            torch.zeros(1, 3, 224, 224)
+        )
         assert quantiles.shape == (1, 5, 3)
-        assert logits is None
+        assert ingredients is None and classes is None
+
+    def test_heads_are_independent(self):
+        # Enabling distillation must not require ingredient supervision or the reverse.
+        _, ingredients, classes = self.model(0, 101).forward_with_aux(torch.zeros(1, 3, 224, 224))
+        assert ingredients is None and classes is not None
+
+    def test_the_classifier_head_stays_off_the_exported_graph(self):
+        # The contract declares logits and nutrition_quantiles as separate outputs of
+        # CombinedModel. A NutritionModel that emitted classes from forward() would change
+        # the shape every downstream consumer reads.
+        out = self.model(7, 101)(torch.zeros(1, 3, 224, 224))
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (1, 5, 3)
 
     def test_the_head_does_not_change_the_quantile_output(self):
         # If adding auxiliary supervision changed the shape or meaning of the shipped
