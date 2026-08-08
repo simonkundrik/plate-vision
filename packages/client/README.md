@@ -44,6 +44,11 @@ absolute error. A single number would be precision the model does not have.
 
 Show the range. If your UI needs one figure, use `median` and say it is an estimate.
 
+When a user corrects the portion, `scaleNutrition(result.nutrition, 0.5)` rescales every
+target. It scales all three bounds, not just the median: a corrected portion is not a more
+certain one, and narrowing the interval on correction would claim confidence the model
+never had.
+
 ## `nutrition` can be `null`, and you should handle it
 
 ```ts
@@ -89,6 +94,7 @@ pipeline is in the same repository and is MIT.
 | `PlateVision` | The session class, if you want to inject a runtime yourself |
 | `decodeImage(source, maxEdge?)` | Browser only. Canvas decode to raw RGB |
 | `stripAlpha(rgba)` | Drop the alpha channel from RGBA bytes |
+| `scaleInterval`, `scaleNutrition` | Apply a user's portion correction |
 | `softmax`, `topK`, `enforceMonotonic` | Postprocessing primitives |
 | `contract`, `labels`, `classCount` | The model contract, shipped with the package |
 

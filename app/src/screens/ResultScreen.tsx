@@ -5,10 +5,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { IntervalBar } from "../components/IntervalBar";
 import { PORTION_STEPS, PortionControl, type PortionStep } from "../components/PortionControl";
 import { colour, radius, space, type } from "../theme";
-import { scaleInterval, type Analysis, type Interval } from "../types";
+import { scaleInterval, type Interval, type MealAnalysis } from "../types";
 
 type Props = {
-  analysis: Analysis;
+  analysis: MealAnalysis;
   onRetake: () => void;
 };
 
@@ -21,15 +21,23 @@ export const ResultScreen = ({ analysis, onRetake }: Props) => {
   const [portion, setPortion] = useState<PortionStep>(1);
   const insets = useSafeAreaInsets();
 
-  const energy = scaleInterval(analysis.nutrition.energy, portion);
   const top = analysis.dishes[0];
 
-  const macros: [string, Interval, string][] = [
-    ["Protein", scaleInterval(analysis.nutrition.protein, portion), "g"],
-    ["Fat", scaleInterval(analysis.nutrition.fat, portion), "g"],
-    ["Carbohydrate", scaleInterval(analysis.nutrition.carbohydrate, portion), "g"],
-    ["Mass", scaleInterval(analysis.nutrition.mass, portion), "g"],
-  ];
+  // The library returns null nutrition when the loaded artifact's nutrition head is not
+  // trained, rather than handing back numbers from random weights. The screen has to render
+  // that state, because the alternative is an app that shows a calorie figure whenever one
+  // is technically available regardless of whether it means anything.
+  const nutrition = analysis.nutrition;
+  const energy = nutrition ? scaleInterval(nutrition.energy, portion) : null;
+
+  const macros: [string, Interval, string][] = nutrition
+    ? [
+        ["Protein", scaleInterval(nutrition.protein, portion), "g"],
+        ["Fat", scaleInterval(nutrition.fat, portion), "g"],
+        ["Carbohydrate", scaleInterval(nutrition.carbohydrate, portion), "g"],
+        ["Mass", scaleInterval(nutrition.mass, portion), "g"],
+      ]
+    : [];
 
   return (
     <ScrollView
@@ -54,36 +62,50 @@ export const ResultScreen = ({ analysis, onRetake }: Props) => {
           {analysis.dishes[1] ? `  ·  or ${analysis.dishes[1].label}` : ""}
         </Text>
 
-        {/* The range is the headline, not a single number. A photo carries no scale
-            reference, so a point estimate would be precision the model does not have. */}
-        <Text style={styles.rangeLabel}>Estimated energy</Text>
-        <Text style={styles.range}>
-          {round(energy.low)}–{round(energy.high)}
-          <Text style={styles.unit}> kcal</Text>
-        </Text>
-        <Text style={styles.median}>most likely {round(energy.median)} kcal</Text>
+        {energy ? (
+          <>
+            {/* The range is the headline, not a single number. A photo carries no scale
+                reference, so a point estimate would be precision the model does not have. */}
+            <Text style={styles.rangeLabel}>Estimated energy</Text>
+            <Text style={styles.range}>
+              {round(energy.low)}–{round(energy.high)}
+              <Text style={styles.unit}> kcal</Text>
+            </Text>
+            <Text style={styles.median}>most likely {round(energy.median)} kcal</Text>
 
-        <View style={styles.bar}>
-          <IntervalBar interval={energy} scaleMax={ENERGY_AXIS_MAX} />
-        </View>
-
-        <Text style={styles.sectionLabel}>Portion</Text>
-        <PortionControl value={portion} onChange={setPortion} />
-        <Text style={styles.hint}>
-          Portion size is the largest source of error and cannot be read from a photograph.
-          If this looks wrong, it probably is. Correct it here.
-        </Text>
-
-        <View style={styles.macros}>
-          {macros.map(([label, interval, unit]) => (
-            <View key={label} style={styles.macroRow}>
-              <Text style={styles.macroLabel}>{label}</Text>
-              <Text style={styles.macroValue}>
-                {round(interval.low)}–{round(interval.high)} {unit}
-              </Text>
+            <View style={styles.bar}>
+              <IntervalBar interval={energy} scaleMax={ENERGY_AXIS_MAX} />
             </View>
-          ))}
-        </View>
+
+            <Text style={styles.sectionLabel}>Portion</Text>
+            <PortionControl value={portion} onChange={setPortion} />
+            <Text style={styles.hint}>
+              Portion size is the largest source of error and cannot be read from a
+              photograph. If this looks wrong, it probably is. Correct it here.
+            </Text>
+
+            <View style={styles.macros}>
+              {macros.map(([label, interval, unit]) => (
+                <View key={label} style={styles.macroRow}>
+                  <Text style={styles.macroLabel}>{label}</Text>
+                  <Text style={styles.macroValue}>
+                    {round(interval.low)}–{round(interval.high)} {unit}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : (
+          // No blank figures and no zeroes. An empty calorie row invites the reading that
+          // the meal has no calories; saying why there is no number does not.
+          <View style={styles.withheld}>
+            <Text style={styles.withheldTitle}>No calorie estimate</Text>
+            <Text style={styles.withheldBody}>
+              {analysis.nutritionUnavailableReason ??
+                "This model cannot produce nutrition figures."}
+            </Text>
+          </View>
+        )}
 
         <Pressable style={styles.secondary} onPress={onRetake} accessibilityRole="button">
           <Text style={styles.secondaryLabel}>Take another photo</Text>
@@ -135,6 +157,21 @@ const styles = StyleSheet.create({
     marginBottom: space(1),
   },
   hint: { color: colour.muted, fontSize: type.label, lineHeight: 19, marginTop: space(1) },
+  // Deliberately quiet rather than alarming. Nothing has gone wrong; the model simply
+  // cannot answer this part, and shouting about it would read as an error state.
+  withheld: {
+    marginTop: space(2),
+    padding: space(2),
+    borderRadius: radius.small,
+    backgroundColor: colour.surface,
+  },
+  withheldTitle: {
+    color: colour.text,
+    fontSize: type.body,
+    fontWeight: "600",
+    marginBottom: space(0.5),
+  },
+  withheldBody: { color: colour.muted, fontSize: type.label, lineHeight: 19 },
   macros: {
     marginTop: space(3),
     borderTopWidth: StyleSheet.hairlineWidth,

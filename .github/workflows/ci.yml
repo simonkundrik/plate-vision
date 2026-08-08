@@ -50,56 +50,36 @@ jobs:
         run: pytest -q
 
   node:
-    # app/ and web/ are scaffolded in PR #13 and PR #16. This job activates on its own
-    # when a package.json appears, rather than being bolted on later and forgotten.
-    name: node (${{ matrix.workspace }})
+    # One install for the whole workspace rather than one per directory. The app depends on
+    # packages/client through a workspace link, so installing them separately would check
+    # the app against whatever was last published instead of the code in the PR.
+    name: node
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        workspace: [app, web, packages/client]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Detect workspace
-        id: detect
-        run: |
-          if [ -f "${{ matrix.workspace }}/package.json" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "No package.json in ${{ matrix.workspace }} yet, nothing to check."
-          fi
-
       - uses: actions/setup-node@v4
-        if: steps.detect.outputs.present == 'true'
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: ${{ matrix.workspace }}/package-lock.json
+          cache-dependency-path: package-lock.json
 
+      # Runs the client package's prepare script, so dist/ exists before anything
+      # typechecks against it. dist/ is not committed.
       - name: Install
-        if: steps.detect.outputs.present == 'true'
-        working-directory: ${{ matrix.workspace }}
         run: npm ci
 
       - name: Typecheck
-        if: steps.detect.outputs.present == 'true'
-        working-directory: ${{ matrix.workspace }}
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
-        if: steps.detect.outputs.present == 'true'
-        working-directory: ${{ matrix.workspace }}
-        run: npm run lint --if-present
+        run: npm run lint
 
       # The client package carries the drift test that compares its bundled copy of the
       # contract against shared/. Without this step that copy can go stale in a PR and the
       # only symptom is every prediction coming back under the wrong label.
       - name: Tests
-        if: steps.detect.outputs.present == 'true'
-        working-directory: ${{ matrix.workspace }}
-        run: npm test --if-present
+        run: npm test
 
   contract:
     # The contract in shared/model_meta.json is consumed by Python, React Native, and the

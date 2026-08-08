@@ -1,0 +1,19 @@
+{
+  "name": "plate-vision-monorepo",
+  "private": true,
+  "description": "Workspace root. Nothing is published from here; see packages/client for the library.",
+  "license": "MIT",
+  "workspaces": [
+    "app",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

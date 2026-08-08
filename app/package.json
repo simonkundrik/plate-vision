@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.8",
+    "@plate-vision/client": "*",
     "expo": "~57.0.11",
     "expo-camera": "~57.0.3",
     "expo-dev-client": "~57.0.10",
