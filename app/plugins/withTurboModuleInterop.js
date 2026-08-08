@@ -19,22 +19,41 @@
 const { withMainApplication } = require("expo/config-plugins");
 
 const IMPORTS = [
+  "import android.util.Log",
   "import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags",
   "import com.facebook.react.internal.featureflags.ReactNativeFeatureFlagsDefaults",
 ];
 
-const OVERRIDE = `    // Legacy ReactPackage modules are invisible to NativeModules under bridgeless without
-    // this. onnxruntime-react-native is one of them. See app/plugins/withTurboModuleInterop.js.
-    ReactNativeFeatureFlags.override(
-      object : ReactNativeFeatureFlagsDefaults() {
-        override fun useTurboModuleInterop(): Boolean = true
-      }
-    )
+// ReactNativeFeatureFlags.override throws IllegalStateException if any flag has already been
+// read, and an uncaught throw in Application.onCreate is an app that opens and instantly
+// closes. That is exactly what the first version of this plugin did: it injected the call
+// after super.onCreate(), by which point something in Expo's startup had already read a flag.
+//
+// Two changes. It goes as early as possible, and it cannot take the app down. A failed
+// override means onnxruntime is not reachable and the first photo reports that plainly,
+// which is a diagnosable state. A crash on launch is not.
+//
+// This is deliberately the opposite of the build-time behaviour below, where a missing
+// anchor throws. Refusing to produce a broken build is right; refusing to start an app
+// because an optimisation could not be applied is not.
+const OVERRIDE = `    try {
+      // Legacy ReactPackage modules are invisible to NativeModules under bridgeless without
+      // this. onnxruntime-react-native is one. See app/plugins/withTurboModuleInterop.js.
+      ReactNativeFeatureFlags.override(
+        object : ReactNativeFeatureFlagsDefaults() {
+          override fun useTurboModuleInterop(): Boolean = true
+        }
+      )
+    } catch (e: IllegalStateException) {
+      // Something read a feature flag before this ran, so the override is refused. The app
+      // still starts; onnxruntime will fail to resolve and say so on the first photo.
+      Log.w("plate-vision", "could not enable useTurboModuleInterop: " + e.message)
+    }
 `;
 
-// Must land before loadReactNative, which is where the runtime reads the flags. Overriding
-// afterwards is silently too late rather than an error.
-const ANCHOR = "    loadReactNative(this)";
+// Immediately after super.onCreate(), which is as early as this can run while still being
+// legal Android. Every line below it in the generated onCreate touches React Native.
+const ANCHOR = "    super.onCreate()";
 
 function addImports(contents) {
   let next = contents;
@@ -72,7 +91,8 @@ const withTurboModuleInterop = (config) =>
       );
     }
 
-    contents = contents.replace(ANCHOR, `${OVERRIDE}${ANCHOR}`);
+    // After the anchor, not before: super.onCreate() has to run first.
+    contents = contents.replace(ANCHOR, `${ANCHOR}\n${OVERRIDE}`);
     cfg.modResults.contents = contents;
     return cfg;
   });
