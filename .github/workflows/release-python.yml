@@ -1,0 +1,91 @@
+name: release python
+
+# Publishing from a laptop means the uploaded artifact is whatever happened to be in a
+# working directory. A tag means it is whatever is at that tag, which is the only version
+# anyone can inspect afterwards.
+on:
+  push:
+    tags:
+      - "py-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: model
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      # Runs before the build, so a stale packaged contract fails here rather than being
+      # published. The copy inside the package is what an installed user reads.
+      - name: Check the packaged contract is current
+        run: python scripts/sync_contract.py --check
+
+      - name: Build
+        run: python -m build
+
+      - name: Check metadata
+        run: twine check dist/*
+
+      # The failure this whole packaging effort exists to prevent: a wheel that imports
+      # from a checkout and raises FileNotFoundError anywhere else. Installed into a clean
+      # environment and exercised from a directory with no repository above it.
+      - name: Install the wheel and load the contract
+        run: |
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install --quiet dist/*.whl
+          cd /tmp
+          /tmp/verify/bin/python -c "
+          import platevision, pathlib
+          from platevision import meta, food101
+          assert 'site-packages' in str(pathlib.Path(platevision.__file__)), 'imported from a checkout'
+          assert meta.load_meta()['input']['name'] == 'image'
+          assert len(food101.load_labels()['labels']) == 101
+          print('installed package loads its contract:', platevision.__version__)
+          "
+
+      - name: Check the tag matches the package version
+        run: |
+          tag="${GITHUB_REF_NAME#py-v}"
+          pkg=$(python -c "import re,pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('platevision/__init__.py').read_text()).group(1))")
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag py-v$tag does not match __version__ $pkg" >&2
+            exit 1
+          fi
+          echo "publishing $pkg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: model/dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/platevision
+    permissions:
+      # Trusted publishing: PyPI verifies an OIDC token from this workflow, so there is no
+      # long-lived API token to store, leak, or rotate.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

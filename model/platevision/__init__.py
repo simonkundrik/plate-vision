@@ -5,4 +5,4 @@ The model contract (input shape, output names, preprocessing constants) lives in
 Nothing in this package should hardcode those values.
 """
 
-__version__ = "0.0.0"
+__version__ = "0.1.0"
