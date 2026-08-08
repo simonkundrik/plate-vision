@@ -2,7 +2,12 @@
 
 Written out rather than imported from timm. Both are short, and the details that matter
 are exactly the ones a wrapper hides: CutMix has to recompute lambda from the box it
-actually cut, and training accuracy stops meaning what it usually means.
+actually cut, training accuracy stops meaning what it usually means, and a regression
+target has to be interpolated in the units it is measured in rather than in whatever space
+the network happens to train in.
+
+Regression uses :meth:`MixResult.blended` with a target transform; classification uses
+:func:`mixed_criterion`. The difference is not stylistic, and the docstrings say why.
 """
 
 from __future__ import annotations
@@ -38,6 +43,29 @@ class MixResult:
         accuracy.
         """
         return self.target_a if self.lam >= 0.5 else self.target_b
+
+    def blended(self, transform=None) -> torch.Tensor:
+        """A single interpolated target, for regression rather than classification.
+
+        Classification mixes the *loss* because cross-entropy is linear in the target, so
+        weighting two losses is identical to weighting two one-hot vectors. Pinball loss is
+        not linear in the target: weighting two of them minimises at a weighted quantile
+        rather than at the interpolated value, which is not what a half-and-half plate
+        means.
+
+        ``transform`` matters more than it looks. Nutrition targets are stored as
+        standardised log1p, and interpolating there is a geometric mean, not an arithmetic
+        one. Blending a 100 kcal dish with a 400 kcal dish at lam 0.5 gives 250 kcal in real
+        units and 200 in log space, a 20% error injected straight into the label. Pass the
+        transform and the blend happens in kilocalories, where "half of each plate" is
+        actually true.
+        """
+        if transform is None:
+            return self.lam * self.target_a + (1.0 - self.lam) * self.target_b
+
+        real_a = transform.inverse(self.target_a)
+        real_b = transform.inverse(self.target_b)
+        return transform.forward(self.lam * real_a + (1.0 - self.lam) * real_b)
 
 
 def rand_bbox(

@@ -30,8 +30,10 @@ from platevision import (
     checkpoint,
     conformal,
     datasets,
+    ema,
     engine,
     meta,
+    mixing,
     models,
     regression,
     transforms,
@@ -84,7 +86,7 @@ def build(args, device):
 
     train_ds = datasets.Nutrition5kDataset(
         train_samples,
-        transform=transforms.nutrition_train_transform(),
+        transform=transforms.nutrition_train_transform(zoom_out=args.zoom_out),
         target_transform=target_transform,
     )
     val_ds = datasets.Nutrition5kDataset(
@@ -144,6 +146,26 @@ def main(argv: list[str] | None = None) -> int:
         help="share of train held out to fit conformal offsets; 0 disables",
     )
     parser.add_argument("--conformal-alpha", type=float, default=0.10)
+
+    recipe = parser.add_argument_group("training recipe")
+    recipe.add_argument("--mixup-alpha", type=float, default=0.0)
+    recipe.add_argument("--cutmix-alpha", type=float, default=0.0)
+    recipe.add_argument("--mix-prob", type=float, default=0.5)
+    recipe.add_argument("--switch-prob", type=float, default=0.5)
+    recipe.add_argument("--ema", action="store_true", help="track an EMA of the weights")
+    recipe.add_argument("--ema-decay", type=float, default=0.999)
+    recipe.add_argument(
+        "--zoom-out",
+        type=float,
+        default=1.6,
+        help="simulate a more distant camera; 1.0 disables. See measure_scale_dependence.py",
+    )
+    recipe.add_argument(
+        "--select-on",
+        default="pinball",
+        choices=["pinball", "mae"],
+        help="checkpoint criterion; mae picked an overconfident model on the first full run",
+    )
     args = parser.parse_args(argv)
 
     engine.seed_everything(args.seed)
@@ -174,6 +196,22 @@ def main(argv: list[str] | None = None) -> int:
             )
     model.to(device)
     print(f"model:  {models.count_parameters(model):,} trainable parameters")
+
+    policy = mixing.MixingPolicy(
+        mixup_alpha=args.mixup_alpha,
+        cutmix_alpha=args.cutmix_alpha,
+        prob=args.mix_prob,
+        switch_prob=args.switch_prob,
+        seed=args.seed,
+    )
+    if policy.enabled:
+        print(f"mixing: mixup {args.mixup_alpha}, cutmix {args.cutmix_alpha}, p {args.mix_prob}")
+
+    # 2,424 dishes is little data and the first full run memorised it, train loss 0.0325
+    # against validation 0.0831. An average of the weights is the cheapest thing that helps.
+    model_ema = ema.ModelEma(model, decay=args.ema_decay) if args.ema else None
+    if model_ema is not None:
+        print(f"ema: decay {args.ema_decay}")
 
     criterion = PinballLoss(quantiles).to(device)
     optimizer = torch.optim.AdamW(models.parameter_groups(model, args.weight_decay), lr=args.lr)
@@ -208,12 +246,20 @@ def main(argv: list[str] | None = None) -> int:
             scaler=scaler if amp_enabled else None,
             max_grad_norm=args.max_grad_norm,
             log_every=args.log_every,
+            mixing=policy if policy.enabled else None,
+            target_transform=target_transform,
+            model_ema=model_ema,
         )
         history.append(train_result.as_dict())
         print(train_result.format(), flush=True)
 
+        # The averaged weights are the ones that would ship, so they are the ones scored.
+        # Selecting on the raw weights and exporting the EMA is a comparison between two
+        # different models.
+        evaluated = model_ema.module if model_ema is not None else model
+
         val_result = regression.evaluate_regression(
-            model,
+            evaluated,
             val_loader,
             criterion,
             device,
@@ -225,15 +271,21 @@ def main(argv: list[str] | None = None) -> int:
         history.append(val_result.as_dict())
         print(val_result.format(), flush=True)
 
-        # Selected on calorie MAE in real units, not on the training loss. The loss lives
-        # in standardised log space and improving it is not the same as getting closer in
-        # kilocalories.
-        energy_mae = val_result.mae["energy"]
-        if energy_mae < best:
-            best = energy_mae
+        # Validation pinball loss by default, not calorie MAE.
+        #
+        # MAE ignores the interval entirely. On the first full run it selected epoch 33 at
+        # 51.6 kcal MAE with its 90% interval covering 64.6% of the test set, over epoch 1
+        # at 78.4 kcal and 91.7% coverage. For a project whose claim is calibrated
+        # uncertainty, that is the wrong thing to optimise, and it failed silently because
+        # the number it does optimise kept improving.
+        criterion_value = (
+            val_result.loss if args.select_on == "pinball" else val_result.mae["energy"]
+        )
+        if criterion_value < best:
+            best = criterion_value
             checkpoint.save_checkpoint(
                 args.out / "best.pt",
-                model=model,
+                model=evaluated,
                 epoch=epoch,
                 backbone=args.backbone,
                 config={
@@ -243,11 +295,17 @@ def main(argv: list[str] | None = None) -> int:
                 history=history,
                 best_metric=best,
             )
-            print(f"  new best: {best:.1f} kcal MAE")
+            unit = "pinball" if args.select_on == "pinball" else "kcal MAE"
+            print(
+                f"  new best: {best:.4f} {unit}"
+                f"  (MAE {val_result.mae['energy']:.1f} kcal,"
+                f" coverage {val_result.coverage.get('energy', 0) * 100:.1f}%)"
+            )
 
         (args.out / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
 
-    print(f"\nbest calorie MAE: {best:.1f} kcal")
+    unit = "validation pinball loss" if args.select_on == "pinball" else "kcal MAE"
+    print(f"\nbest {unit}: {best:.4f}")
 
     if calibration_loader is not None:
         fit_conformal(args, device, target_transform, calibration_loader)
