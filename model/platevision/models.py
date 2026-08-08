@@ -62,6 +62,7 @@ class NutritionModel(nn.Module):
         num_quantiles: int,
         pretrained: bool = True,
         drop_rate: float = 0.3,
+        num_ingredients: int = 0,
     ) -> None:
         super().__init__()
         import timm
@@ -80,6 +81,15 @@ class NutritionModel(nn.Module):
         self.dropout = nn.Dropout(drop_rate)
         self.head = nn.Linear(self.feature_dim, num_targets * num_quantiles)
 
+        # Auxiliary, and deliberately not part of forward(). The contract declares two
+        # outputs and the app has no use for an ingredient vector, so exporting one would
+        # change the graph for a signal only training consumes. Its job is to shape the
+        # features the quantile head reads, not to be shipped.
+        self.num_ingredients = num_ingredients
+        self.ingredient_head = (
+            nn.Linear(self.feature_dim, num_ingredients) if num_ingredients else None
+        )
+
     @torch.no_grad()
     def _probe_feature_dim(self) -> int:
         from platevision.meta import input_size
@@ -94,6 +104,18 @@ class NutritionModel(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.dropout(self.backbone(x))
         return self.head(features).view(-1, self.num_targets, self.num_quantiles)
+
+    def forward_with_ingredients(self, x: torch.Tensor):
+        """Quantiles plus ingredient logits, sharing one backbone pass.
+
+        Separate from forward() so the exported graph keeps the shape the contract
+        declares. Calling forward() and then the ingredient head would run the backbone
+        twice, which is the expensive part.
+        """
+        features = self.dropout(self.backbone(x))
+        quantiles = self.head(features).view(-1, self.num_targets, self.num_quantiles)
+        logits = self.ingredient_head(features) if self.ingredient_head is not None else None
+        return quantiles, logits
 
 
 class CombinedModel(nn.Module):

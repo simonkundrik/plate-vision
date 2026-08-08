@@ -148,11 +148,18 @@ def restore_nutrition_model(path: Path, *, map_location: str = "cpu"):
             "back into kilocalories"
         )
 
+    # The auxiliary ingredient head is trained but never exported, so its width is not in
+    # the contract. Reading it back from the weights lets a checkpoint round-trip; hardcoding
+    # zero here would make every run that used ingredient supervision unloadable.
+    ingredient_weight = payload["model"].get("ingredient_head.weight")
+    num_ingredients = int(ingredient_weight.shape[0]) if ingredient_weight is not None else 0
+
     model = NutritionModel(
         backbone,
         num_targets=len(target_keys()),
         num_quantiles=len(quantiles()),
         pretrained=False,
+        num_ingredients=num_ingredients,
     )
     model.load_state_dict(payload["model"])
     return model, TargetTransform.from_dict(stored), payload
