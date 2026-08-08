@@ -33,6 +33,9 @@ class NutritionSample:
     dish_id: str
     image_path: Path
     targets: tuple[float, ...]
+    # Names rather than indices: the vocabulary is built from the training split alone, so
+    # a sample cannot know its own encoding without knowing which split it landed in.
+    ingredients: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +114,12 @@ def build_nutrition5k_index(
             continue
 
         samples.append(
-            NutritionSample(dish_id=dish_id, image_path=image_path, targets=targets_for(dish))
+            NutritionSample(
+                dish_id=dish_id,
+                image_path=image_path,
+                targets=targets_for(dish),
+                ingredients=tuple(sorted({i.name for i in dish.ingredients})),
+            )
         )
 
     stats = IndexStats(
@@ -194,10 +202,14 @@ class Nutrition5kDataset:
     does not require torch.
     """
 
-    def __init__(self, samples, transform=None, target_transform=None):
+    def __init__(self, samples, transform=None, target_transform=None, ingredient_vocab=None):
         self.samples = list(samples)
         self.transform = transform
         self.target_transform = target_transform
+        # When set, each item gains a multi-hot ingredient vector for the auxiliary head.
+        # Left unset the dataset behaves exactly as before, so nothing that does not ask
+        # for ingredients has to know they exist.
+        self.ingredient_vocab = list(ingredient_vocab) if ingredient_vocab else None
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -213,7 +225,13 @@ class Nutrition5kDataset:
         targets = torch.tensor(sample.targets, dtype=torch.float32)
         if self.target_transform is not None:
             targets = self.target_transform.forward(targets)
-        return image, targets
+
+        if self.ingredient_vocab is None:
+            return image, targets
+
+        from platevision.ingredients import multi_hot
+
+        return image, targets, multi_hot(sample.ingredients, self.ingredient_vocab)
 
 
 class Food101Dataset:

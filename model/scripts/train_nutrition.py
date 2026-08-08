@@ -38,6 +38,9 @@ from platevision import (
     regression,
     transforms,
 )
+from platevision import (
+    ingredients as ingredient_lib,
+)
 from platevision.quantile import PinballLoss
 from platevision.targets import TargetTransform
 
@@ -97,10 +100,21 @@ def build(args, device):
     target_transform = TargetTransform.fit(s.targets for s in train_samples)
     print(f"target log-space mean: {[round(v, 2) for v in target_transform.mean]}")
 
+    # Built from the training split alone, for the same reason the transform is. A
+    # vocabulary drawn from train and test together leaks which ingredients the test dishes
+    # contain, and nothing in a loss curve would show it.
+    vocabulary: list[str] = []
+    if args.ingredient_weight > 0:
+        vocabulary = ingredient_lib.build_vocabulary(
+            (s.ingredients for s in train_samples), args.ingredient_min_count
+        )
+        print(f"ingredients: {len(vocabulary)} with >= {args.ingredient_min_count} dishes")
+
     train_ds = datasets.Nutrition5kDataset(
         train_samples,
         transform=transforms.nutrition_train_transform(zoom_out=args.zoom_out),
         target_transform=target_transform,
+        ingredient_vocab=vocabulary or None,
     )
     val_ds = datasets.Nutrition5kDataset(
         val_samples,
@@ -125,7 +139,7 @@ def build(args, device):
             calibration_ds, batch_size=args.batch_size, shuffle=False, **common
         )
 
-    return train_loader, val_loader, calibration_loader, target_transform
+    return train_loader, val_loader, calibration_loader, target_transform, vocabulary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -168,6 +182,13 @@ def main(argv: list[str] | None = None) -> int:
     recipe.add_argument("--ema", action="store_true", help="track an EMA of the weights")
     recipe.add_argument("--ema-decay", type=float, default=0.999)
     recipe.add_argument(
+        "--ingredient-weight",
+        type=float,
+        default=0.0,
+        help="weight on the auxiliary ingredient loss; 0 disables the head entirely",
+    )
+    recipe.add_argument("--ingredient-min-count", type=int, default=20)
+    recipe.add_argument(
         "--zoom-out",
         type=float,
         default=1.6,
@@ -189,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
     quantiles = meta.quantiles()
     median_index = quantiles.index(0.5)
 
-    train_loader, val_loader, calibration_loader, target_transform = build(args, device)
+    train_loader, val_loader, calibration_loader, target_transform, vocabulary = build(args, device)
 
     model = models.NutritionModel(
         args.backbone,
@@ -197,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         num_quantiles=len(quantiles),
         pretrained=args.backbone_from is None,
         drop_rate=args.drop_rate,
+        num_ingredients=len(vocabulary),
     )
     if args.backbone_from:
         payload = checkpoint.load_checkpoint(args.backbone_from)
@@ -225,6 +247,17 @@ def main(argv: list[str] | None = None) -> int:
     model_ema = ema.ModelEma(model, decay=args.ema_decay) if args.ema else None
     if model_ema is not None:
         print(f"ema: decay {args.ema_decay}")
+
+    ingredient_criterion = None
+    if vocabulary:
+        # Positive weighting matters more than the loss choice here. Most ingredients are
+        # absent from most dishes, so an unweighted head reaches a low loss by answering
+        # "not present" to everything and learns nothing at all.
+        weight = ingredient_lib.positive_weight(
+            (s.ingredients for s in train_loader.dataset.samples), vocabulary
+        ).to(device)
+        ingredient_criterion = torch.nn.BCEWithLogitsLoss(pos_weight=weight)
+        print(f"ingredient loss weight: {args.ingredient_weight}")
 
     criterion = PinballLoss(quantiles).to(device)
     optimizer = torch.optim.AdamW(models.parameter_groups(model, args.weight_decay), lr=args.lr)
@@ -262,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
             mixing=policy if policy.enabled else None,
             target_transform=target_transform,
             model_ema=model_ema,
+            ingredient_criterion=ingredient_criterion,
+            ingredient_weight=args.ingredient_weight,
         )
         history.append(train_result.as_dict())
         print(train_result.format(), flush=True)

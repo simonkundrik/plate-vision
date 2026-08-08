@@ -64,13 +64,20 @@ def train_regression_epoch(
     mixing=None,
     target_transform=None,
     model_ema=None,
+    ingredient_criterion=None,
+    ingredient_weight: float = 0.0,
 ) -> RegressionResult:
     model.train()
     loss_meter = AverageMeter()
     started = time.perf_counter()
     amp_enabled = scaler is not None and scaler.is_enabled()
 
-    for step, (images, targets) in enumerate(loader):
+    for step, batch in enumerate(loader):
+        # The loader yields three items only when the dataset was given an ingredient
+        # vocabulary. Unpacking positionally keeps every existing caller working unchanged.
+        images, targets = batch[0], batch[1]
+        ingredients = batch[2].to(device, non_blocking=True) if len(batch) > 2 else None
+
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
@@ -83,12 +90,25 @@ def train_regression_epoch(
         if mixed is not None:
             images = mixed.images
             targets = mixed.blended(target_transform)
+            # Ingredient labels are dropped for a mixed batch rather than blended. A
+            # blended multi-hot vector says a dish half-contains an ingredient, which is
+            # not a thing, and thresholding it back to binary invents ingredients that were
+            # only ever a fraction present.
+            ingredients = None
 
         optimizer.zero_grad(set_to_none=True)
 
+        use_aux = ingredients is not None and ingredient_criterion is not None
+
         with torch.amp.autocast(device_type=device.type, enabled=amp_enabled):
-            predictions = model(images)
-            loss = criterion(predictions, targets)
+            if use_aux:
+                predictions, ingredient_logits = model.forward_with_ingredients(images)
+                loss = criterion(predictions, targets) + ingredient_weight * ingredient_criterion(
+                    ingredient_logits, ingredients
+                )
+            else:
+                predictions = model(images)
+                loss = criterion(predictions, targets)
 
         if scaler is not None:
             scaler.scale(loss).backward()
