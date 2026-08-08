@@ -55,7 +55,7 @@ a projection.
 | Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | TBD |
 | Calorie MAE, personal weighed-meal set | reported honestly, expected to be worse | TBD |
 | 90% interval coverage | 90% (+/- 3pp) | TBD |
-| Model size, int8 | under 10 MB | **5.24 MB** (from 16.48 MB fp32) |
+| Deployable model size | under 10 MB | **16.48 MB fp32.** int8 is 5.24 MB but unusable, see below |
 | Inference p95, mid-range Android | under 100 ms | TBD |
 
 ### Baseline run
@@ -102,13 +102,39 @@ The set is defined by a tracked manifest of URLs and attribution rather than com
 images, so the repository redistributes nothing. All entries are CC BY, CC BY-SA, CC0, or
 public domain, filtered for commercial use and modification.
 
-### On the int8 numbers
+### int8 quantization does not work on this model
 
-The size reduction is measured and architecture-determined, so it holds for the trained weights.
-The **latency** result does not transfer: on the development laptop int8 is *slower* than fp32,
-because that CPU has AVX2 but no AVX512-VNNI and the inserted quantization nodes are overhead that
-never gets repaid. Phones have ARM dot-product instructions that ONNX Runtime does use, so the
-on-device number is the one that matters and it has not been taken yet.
+The size reduction is real: 16.48 MB to 5.24 MB. The resulting model is not usable.
+
+Measured against the trained baseline, int8 changes **most predictions**. Agreement with the
+fp32 model, on held-out images across three calibration set sizes:
+
+```
+  32 calibration images   25.0% agreement
+ 128 calibration images   15.0%
+ 384 calibration images   47.5%
+```
+
+Erratic rather than improving, so it is not a shortage of calibration data. This is the known
+post-training quantization failure for EfficientNet: depthwise separable convolutions with SiLU
+activations have per-channel dynamic ranges that int8 cannot represent. Per-channel weight
+quantization is already enabled and is not enough.
+
+The export refuses to ship an int8 artifact below 90% agreement and keeps fp32 instead. A
+smaller model that predicts something else is not a smaller model.
+
+**An earlier version of this file claimed int8 as a met target.** That figure came from
+measuring agreement on a model with randomly initialised weights, whose activation ranges are
+small and well conditioned, which reported 100% agreement and proved nothing. Validating
+quantization against an untrained model is a measurement that cannot fail.
+
+Routes worth trying, none of them yet attempted: quantization-aware training, cross-layer
+equalisation before quantizing, keeping the worst layers in fp32, or a backbone chosen for
+quantization friendliness rather than for parameter count.
+
+Latency separately does not transfer from this machine: the development laptop has AVX2 but no
+AVX512-VNNI, so int8 measures *slower* than fp32 here. Phones have ARM dot-product instructions
+ONNX Runtime does use, and that number has not been taken.
 
 Two test sets are reported separately and deliberately. Nutrition5k is captured overhead on a fixed
 rig in Google cafeterias, which is not what a handheld phone photo looks like. A personal set of
