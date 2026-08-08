@@ -1,0 +1,95 @@
+/** Public types. Everything an integrator touches is declared here. */
+
+export type DishPrediction = {
+  /** Food-101 class key, e.g. `spaghetti_carbonara`. Stable across model versions. */
+  key: string;
+  /** Human-readable name suitable for display. */
+  label: string;
+  /** Softmax probability in [0, 1]. */
+  confidence: number;
+};
+
+/**
+ * A predicted quantity as an interval rather than a number.
+ *
+ * `low` and `high` are the model's 5th and 95th percentile predictions, `median` the 50th.
+ * They are separate fields rather than a single value because portion size cannot be
+ * recovered from a photograph: a point estimate would be precision the model does not have.
+ */
+export type Interval = {
+  low: number;
+  median: number;
+  high: number;
+};
+
+export type NutritionEstimate = {
+  /** Kilocalories. */
+  energy: Interval;
+  /** Grams. */
+  protein: Interval;
+  fat: Interval;
+  carbohydrate: Interval;
+  /** Total plate mass in grams. */
+  mass: Interval;
+};
+
+export type Analysis = {
+  /** Dish candidates, most confident first. */
+  dishes: DishPrediction[];
+  /**
+   * Nutrition estimate, or `null` when the loaded model's nutrition head is not trained.
+   *
+   * Deliberately nullable rather than optional-and-usually-there. A model can ship with a
+   * trained classifier and an untrained nutrition head, and returning plausible numbers
+   * from random weights is the single easiest way for an integrator to publish something
+   * false without noticing.
+   */
+  nutrition: NutritionEstimate | null;
+  /** Why nutrition is null, when it is. */
+  nutritionUnavailableReason: string | null;
+  /** Milliseconds spent inside the model, excluding decode. */
+  inferenceMs: number;
+};
+
+/** Raw pixels, already decoded. Height and width are free; the model resizes internally. */
+export type RgbImage = {
+  /** Row-major RGB bytes, length `width * height * 3`. */
+  data: Uint8Array;
+  width: number;
+  height: number;
+};
+
+/**
+ * Per-target statistics for undoing the training-time transform.
+ *
+ * The model predicts in standardised log space, so without these its nutrition outputs are
+ * unitless numbers rather than kilocalories. They travel in the model bundle for that
+ * reason.
+ */
+export type TargetTransform = {
+  mean: number[];
+  std: number[];
+  keys: string[];
+};
+
+/** Metadata published alongside a model artifact. */
+export type ModelBundle = {
+  schemaVersion: number;
+  /** Which output heads carry trained weights. */
+  headsTrained: {
+    logits: boolean;
+    nutritionQuantiles: boolean;
+  };
+  targetTransform: TargetTransform | null;
+};
+
+export type LoadOptions = {
+  /**
+   * The ONNX model. A URL or path in React Native, a URL or ArrayBuffer on the web.
+   */
+  model: string | ArrayBuffer | Uint8Array;
+  /** Bundle metadata describing the artifact. */
+  bundle: ModelBundle;
+  /** How many dish candidates to return. */
+  topK?: number;
+};

@@ -1,0 +1,81 @@
+{
+  "name": "@plate-vision/client",
+  "version": "0.1.0",
+  "description": "On-device food recognition and calibrated calorie intervals from a single photo. Runs the same ONNX model in React Native and the browser.",
+  "keywords": [
+    "onnx",
+    "onnxruntime",
+    "food",
+    "nutrition",
+    "calories",
+    "react-native",
+    "on-device",
+    "machine-learning"
+  ],
+  "license": "MIT",
+  "author": "Simon Kundrik",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simonkundrik/plate-vision.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/simonkundrik/plate-vision/tree/main/packages/client#readme",
+  "bugs": "https://github.com/simonkundrik/plate-vision/issues",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "react-native": "./dist/index.native.js",
+      "browser": "./dist/index.js",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "sync-contract": "node scripts/sync-contract.mjs",
+    "build": "npm run sync-contract && tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "onnxruntime-react-native": ">=1.24.0",
+    "onnxruntime-web": ">=1.24.0"
+  },
+  "peerDependenciesMeta": {
+    "onnxruntime-react-native": {
+      "optional": true
+    },
+    "onnxruntime-web": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.10.2",
+    "eslint": "^9.17.0",
+    "onnxruntime-react-native": "~1.24.0",
+    "onnxruntime-web": "~1.24.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workspace: [app, web]
+        workspace: [app, web, packages/client]
     steps:
       - uses: actions/checkout@v4
 
@@ -92,6 +92,14 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         working-directory: ${{ matrix.workspace }}
         run: npm run lint --if-present
+
+      # The client package carries the drift test that compares its bundled copy of the
+      # contract against shared/. Without this step that copy can go stale in a PR and the
+      # only symptom is every prediction coming back under the wrong label.
+      - name: Tests
+        if: steps.detect.outputs.present == 'true'
+        working-directory: ${{ matrix.workspace }}
+        run: npm test --if-present
 
   contract:
     # The contract in shared/model_meta.json is consumed by Python, React Native, and the
