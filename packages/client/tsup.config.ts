@@ -6,6 +6,10 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "index.native": "src/index.native.ts",
+    // Its own entry point on purpose. The core uploads nothing, which is the reason it
+    // exists; barcode lookup makes a network request, so it has to be imported
+    // deliberately rather than being reachable from the main import.
+    barcode: "src/barcode.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
