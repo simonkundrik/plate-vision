@@ -40,9 +40,9 @@
       "onnxruntime-react-native"
     ],
     "extra": {
-      "// model": "Where the app fetches the ONNX artifact and its manifest. Both are published on GitHub Releases rather than bundled: the model is tens of megabytes and would otherwise sit in every APK and in this repository. Left empty here so the repo carries no URL that pretends to be live; set them for a build via EXPO_PUBLIC_MODEL_URL / EXPO_PUBLIC_BUNDLE_URL or by editing this block.",
-      "modelUrl": "",
-      "bundleUrl": "",
+      "// model": "Where the app fetches the ONNX artifact and its manifest. Both are published on GitHub Releases rather than bundled: the model is tens of megabytes and would otherwise sit in every APK and in this repository. Override for a build with EXPO_PUBLIC_MODEL_URL / EXPO_PUBLIC_BUNDLE_URL. The pinned tag is deliberate: 'latest' would change the model under a build that was tested against a different one.",
+      "modelUrl": "https://github.com/simonkundrik/plate-vision/releases/download/model-v0.1.0/plate-vision-fp32.onnx",
+      "bundleUrl": "https://github.com/simonkundrik/plate-vision/releases/download/model-v0.1.0/bundle.json",
       "eas": {
         "projectId": "235fada8-9258-4324-a496-1fd31bee6279"
       }
