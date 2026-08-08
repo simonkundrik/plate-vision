@@ -64,16 +64,29 @@ def build(args, device):
     )
     print(f"val:   {val_stats.kept:,} kept of {val_stats.listed:,} listed")
 
-    # Held out of training entirely, so conformal calibration sees predictions the model was
-    # never fitted to. Calibrating on data the model has trained on measures how well it
-    # memorised, produces offsets that are far too small, and certifies nothing.
+    # Carved out of the *validation* split, not the training one.
+    #
+    # The first version held out a slice of train, reasoning that the model had not been
+    # fitted to it. That addresses the wrong concern. A conformal guarantee needs the
+    # calibration data to be exchangeable with the data being predicted on, and a held-out
+    # slice of train is not exchangeable with Nutrition5k's official test split: the model
+    # generalises measurably better to it. Measured on the Phase B run, offsets fitted that
+    # way came out near zero, energy +/- 1.0 and mass negative, and moved test coverage from
+    # 82.2% to 83.4%. Refitting on a slice of the test split instead gave 90.5% +/- 2.3.
+    #
+    # The cost is evaluation data: the calibration slice is excluded from the reported
+    # metrics, because scoring a model on the data used to calibrate its intervals is the
+    # same circularity in a different place.
     calibration_samples: list = []
     if args.calibration_fraction > 0:
-        shuffled = list(train_samples)
+        shuffled = list(val_samples)
         random.Random(args.seed).shuffle(shuffled)
         cut = max(1, int(len(shuffled) * args.calibration_fraction))
-        calibration_samples, train_samples = shuffled[:cut], shuffled[cut:]
-        print(f"       {len(calibration_samples):,} held out for conformal calibration")
+        calibration_samples, val_samples = shuffled[:cut], shuffled[cut:]
+        print(
+            f"       {len(calibration_samples):,} of the validation split held out for "
+            f"conformal calibration, {len(val_samples):,} left for reporting"
+        )
 
     if args.limit_train or args.limit_val:
         print(f"using: {len(train_samples):,} train, {len(val_samples):,} val")
@@ -142,8 +155,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--calibration-fraction",
         type=float,
-        default=0.12,
-        help="share of train held out to fit conformal offsets; 0 disables",
+        default=0.4,
+        help="share of the validation split held out to fit conformal offsets; 0 disables",
     )
     parser.add_argument("--conformal-alpha", type=float, default=0.10)
 
