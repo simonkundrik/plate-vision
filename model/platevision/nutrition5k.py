@@ -77,13 +77,25 @@ def split_url(filename: str) -> str:
 
 
 def rgb_url(dish_id: str) -> str:
-    """Overhead RGB frame for one dish.
-
-    Sibling depth_raw.png and depth_color.png files exist at the same prefix and are
-    deliberately not fetched: they roughly double the download for data this project
-    cannot use at inference time.
-    """
+    """Overhead RGB frame for one dish."""
     return f"{GCS_BASE}/imagery/realsense_overhead/{dish_id}/rgb.png"
+
+
+def depth_url(dish_id: str) -> str:
+    """Overhead raw depth frame for one dish, 16-bit millimetres.
+
+    Not an inference input. A phone has no depth sensor, so feeding depth to the model
+    would open a gap between training and deployment that no tuning closes.
+
+    It is fetched because it makes two things possible that RGB alone does not. Integrated
+    against the table plane it yields each dish's *volume*, which turns calorie density into
+    a supervisable target: density is intensive and readable from appearance, while absolute
+    mass is not observable from a single photograph at all. And it can be predicted as an
+    auxiliary target, so the backbone is pushed to learn geometry while inference stays RGB.
+
+    depth_color.png is the same data rendered for human eyes and is deliberately skipped.
+    """
+    return f"{GCS_BASE}/imagery/realsense_overhead/{dish_id}/depth_raw.png"
 
 
 def parse_dish_row(row: list[str]) -> Dish:
