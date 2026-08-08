@@ -102,6 +102,34 @@ never had.
 Portion correction is the only correction signal available at inference time. An interface
 that shows a number and offers no way to disagree with it throws that away.
 
+## Barcode lookup
+
+For packaged food, reading the wrapper beats estimating from the photo. The vision model is
+worst at exactly the case a barcode is best at.
+
+```ts
+import { lookupBarcode, nutritionFromProduct } from "@plate-vision/client/barcode";
+
+const result = await lookupBarcode(scanned);
+if (result.found) {
+  const nutrition = nutritionFromProduct(result.product, massEstimate);
+}
+```
+
+**This is the one part of the library that makes a network request**, which is why it has its
+own entry point rather than being reachable from the main import. Everything else runs
+on-device and uploads nothing.
+
+**It gives exact composition, not exact calories.** Open Food Facts states kilocalories per
+100g; it does not say how much is on the plate. Against this project's own error
+decomposition, where calorie error splits about evenly between mass and density, a barcode
+collapses the density half and leaves the mass half untouched. All of the remaining interval
+width comes from the mass, which is the honest attribution: pass a zero-width mass, because
+the user weighed it or ate a stated serving, and you correctly get a zero-width answer.
+
+Roughly a third of scans miss. `found: false` carries a reason and is an ordinary outcome for
+a community-maintained database rather than an error.
+
 ## Compatibility
 
 The package version tracks the **API**. The model version tracks the **weights**. They move

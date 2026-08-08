@@ -10,6 +10,14 @@ export default tseslint.config(
       // The ONNX runtime modules are injected as `never` at the boundary, which is the
       // price of supporting two runtimes without depending on either.
       "@typescript-eslint/no-explicit-any": "error",
+
+      // A leading underscore marks a parameter that exists for its type rather than its
+      // value. Test doubles need declared parameters even when the body ignores them, or
+      // vi.fn types the call record as an empty tuple and the request cannot be asserted on.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
   {

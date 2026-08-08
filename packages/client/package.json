@@ -33,7 +33,12 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./barcode": {
+      "types": "./dist/barcode.d.ts",
+      "import": "./dist/barcode.js",
+      "require": "./dist/barcode.cjs"
+    }
   },
   "files": [
     "dist",
