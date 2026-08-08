@@ -17,9 +17,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+from PIL import Image
 
 from platevision import download as dl
 from platevision import nutrition5k as n5k
@@ -133,7 +136,7 @@ def audit(dishes: dict[str, n5k.Dish], usable: set[str]) -> None:
     print(f"  calories min/median/max:           {cals[0]:.0f} / {mid:.0f} / {cals[-1]:.0f}")
 
 
-def download(out: Path, limit: int | None, workers: int, force: bool) -> int:
+def download(out: Path, limit: int | None, workers: int, force: bool, depth: bool = False) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "metadata").mkdir(exist_ok=True)
     (out / "splits").mkdir(exist_ok=True)
@@ -166,12 +169,18 @@ def download(out: Path, limit: int | None, workers: int, force: bool) -> int:
         ids = ids[:limit]
     print(f"\nImagery: {len(ids):,} dishes into {imagery}")
 
-    pending = [d for d in ids if force or not (imagery / d / "rgb.png").exists()]
+    def complete(d: str) -> bool:
+        have = (imagery / d / "rgb.png").exists()
+        # Resuming an rgb-only run with --depth has to re-visit dishes that already have
+        # their rgb frame, or the depth pass silently fetches nothing.
+        return have and (not depth or (imagery / d / "depth_raw.png").exists())
+
+    pending = [d for d in ids if force or not complete(d)]
     print(f"  already present: {len(ids) - len(pending):,}, to fetch: {len(pending):,}")
 
     ok = failed = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_fetch_one, imagery, d): d for d in pending}
+        futures = {pool.submit(_fetch_one, imagery, d, depth): d for d in pending}
         for i, fut in enumerate(as_completed(futures), 1):
             dish_id = futures[fut]
             try:
@@ -187,16 +196,33 @@ def download(out: Path, limit: int | None, workers: int, force: bool) -> int:
     return 1 if failed else 0
 
 
-def _fetch_one(imagery: Path, dish_id: str) -> None:
+def _fetch_one(imagery: Path, dish_id: str, depth: bool = False) -> None:
     # Fetch before creating anything on disk, so a failure leaves no empty directory
     # behind. Write through a .part name so an interrupted run cannot leave a truncated
     # PNG that a later resume would treat as already downloaded.
-    data = dl.fetch(n5k.rgb_url(dish_id))
-    dest = imagery / dish_id / "rgb.png"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(".png.part")
-    tmp.write_bytes(data)
-    tmp.replace(dest)
+    wanted = [("rgb.png", n5k.rgb_url(dish_id))]
+    if depth:
+        wanted.append(("depth_raw.png", n5k.depth_url(dish_id)))
+
+    for name, url in wanted:
+        dest = imagery / dish_id / name
+        if dest.exists():
+            continue
+        data = dl.fetch(url)
+
+        # A zero-length or malformed response still writes a file, and the .part rename only
+        # guards against a truncated *write*. One dish arrived as an empty depth_raw.png and
+        # took out an evaluation pass hundreds of images in, which is the same failure a
+        # size floor let through on the OOD set. Decode before committing it to disk.
+        try:
+            Image.open(io.BytesIO(data)).verify()
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"{url} did not return a decodable PNG ({len(data)} bytes)") from exc
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(".png.part")
+        tmp.write_bytes(data)
+        tmp.replace(dest)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -206,11 +232,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, help="only fetch the first N dishes")
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--force", action="store_true", help="re-fetch files already on disk")
+    parser.add_argument(
+        "--depth",
+        action="store_true",
+        help="also fetch depth_raw.png, needed to derive per-dish volume",
+    )
     args = parser.parse_args(argv)
 
     if args.report:
         return report()
-    return download(args.out, args.limit, args.workers, args.force)
+    return download(args.out, args.limit, args.workers, args.force, args.depth)
 
 
 if __name__ == "__main__":

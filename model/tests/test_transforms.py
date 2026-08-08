@@ -114,6 +114,66 @@ def test_nutrition_crop_is_milder_than_classification_crop():
     assert crop_of["nutrition"][0] > crop_of["classification"][0]
 
 
+class TestRandomZoomOut:
+    """Simulating a more distant camera, the one scale augmentation a calorie label allows.
+
+    Cropping cannot do this: it removes food while the target still claims all of it.
+    Shrinking removes nothing. The rig makes this matter, because a fixed overhead camera
+    at constant height means apparent size *is* real size, and a model trained only on that
+    learns to read scale off the image. See scripts/measure_scale_dependence.py.
+    """
+
+    def test_preserves_the_image_size(self):
+        zoom = transforms.RandomZoomOut(max_factor=2.0, p=1.0)
+        assert zoom(torch.rand(3, 64, 64)).shape == (3, 64, 64)
+
+    def test_actually_shrinks_the_content(self):
+        # A bright square on a dark field: after zooming out it should occupy fewer pixels.
+        image = torch.zeros(3, 64, 64)
+        image[:, 16:48, 16:48] = 1.0
+
+        zoom = transforms.RandomZoomOut(max_factor=2.0, p=1.0)
+        torch.manual_seed(0)
+        shrunk = zoom(image)
+
+        assert (shrunk > 0.5).sum() < (image > 0.5).sum()
+
+    def test_pads_by_replicating_the_edge(self):
+        # A constant border is a cue no camera produces, and the model would learn to read
+        # it as "this food is smaller than it looks" instead of learning to judge size.
+        image = torch.full((3, 32, 32), 0.7)
+        torch.manual_seed(0)
+        padded = transforms.RandomZoomOut(max_factor=2.0, p=1.0)(image)
+
+        assert padded[:, 0, 0].mean() > 0.5, "corner was filled with a constant, not the edge"
+
+    def test_p_zero_is_a_no_op(self):
+        image = torch.rand(3, 32, 32)
+        assert torch.equal(transforms.RandomZoomOut(max_factor=2.0, p=0.0)(image), image)
+
+    def test_rejects_a_factor_below_one(self):
+        # Below 1.0 would zoom *in*, which crops food away and silently falsifies the label.
+        with pytest.raises(ValueError, match="at least 1.0"):
+            transforms.RandomZoomOut(max_factor=0.8)
+
+    def test_is_in_the_nutrition_recipe_and_not_the_classification_one(self):
+        nutrition = {type(t).__name__ for t in transforms.nutrition_train_transform().transforms}
+        assert "RandomZoomOut" in nutrition
+
+        # Classification does not need it: a crop of carbonara is still carbonara, and
+        # scale carries no information about a class label.
+        baseline = {
+            type(t).__name__ for t in transforms.classification_train_transform().transforms
+        }
+        assert "RandomZoomOut" not in baseline
+
+    def test_can_be_disabled(self):
+        names = {
+            type(t).__name__ for t in transforms.nutrition_train_transform(zoom_out=1.0).transforms
+        }
+        assert "RandomZoomOut" not in names
+
+
 def test_only_the_nutrition_recipe_corrects_for_viewing_angle():
     """Nutrition5k is a fixed overhead rig; the phone is not. Perspective and rotation
     attack that gap without changing how much food is visible."""

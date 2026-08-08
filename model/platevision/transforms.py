@@ -10,6 +10,7 @@ from __future__ import annotations
 import torch
 from torchvision.transforms import v2
 from torchvision.transforms.v2 import InterpolationMode
+from torchvision.transforms.v2 import functional as F
 
 from platevision import meta
 
@@ -116,12 +117,58 @@ def classification_train_transform(
     )
 
 
+class RandomZoomOut(v2.Transform):
+    """Shrink the image within the frame, as a more distant camera would.
+
+    Cropping cannot simulate a further camera: it removes food while the calorie label
+    still claims all of it. Shrinking removes nothing, so the label stays true, which is
+    what makes this the one scale augmentation a regression target tolerates.
+
+    Padding replicates the edge rather than filling with a constant. A flat border is a cue
+    no camera produces, and the model would learn to read it as "this food is smaller than
+    it looks" rather than learning to judge size without the cue at all.
+    """
+
+    def __init__(self, max_factor: float = 1.6, p: float = 0.5, interpolation=None) -> None:
+        super().__init__()
+        if max_factor < 1.0:
+            raise ValueError(f"max_factor must be at least 1.0, got {max_factor}")
+        self.max_factor = max_factor
+        self.p = p
+        self.interpolation = interpolation or InterpolationMode.BILINEAR
+
+    def transform(self, inpt, params):  # noqa: D102
+        if float(torch.rand(())) >= self.p or self.max_factor <= 1.0:
+            return inpt
+
+        height, width = F.get_size(inpt)
+        factor = float(torch.empty(()).uniform_(1.0, self.max_factor))
+        shrunk = F.resize(
+            inpt,
+            [max(1, int(round(height / factor))), max(1, int(round(width / factor)))],
+            interpolation=self.interpolation,
+            antialias=True,
+        )
+
+        new_height, new_width = F.get_size(shrunk)
+        top = (height - new_height) // 2
+        left = (width - new_width) // 2
+        return F.pad(
+            shrunk,
+            [left, top, width - new_width - left, height - new_height - top],
+            padding_mode="edge",
+        )
+
+
 def nutrition_train_transform(
-    *, scale: tuple[float, float] = (0.85, 1.0), size: int | None = None
+    *,
+    scale: tuple[float, float] = (0.85, 1.0),
+    size: int | None = None,
+    zoom_out: float = 1.6,
 ) -> v2.Compose:
     """Augmentation for Nutrition5k regression.
 
-    Two differences from the classification recipe, both deliberate.
+    Three differences from the classification recipe, all deliberate.
 
     Cropping is kept mild. Aggressive random cropping is safe for a class label but not
     for a calorie label: cropping away half the plate removes food from the image while
@@ -133,18 +180,33 @@ def nutrition_train_transform(
     overhead rig, and the deployed model sees handheld phone photos taken from whatever
     angle the user happened to hold. These augmentations attack that domain gap directly,
     and unlike cropping they leave the amount of visible food unchanged.
+
+    Zooming *out* is added for the same reason, and it is free of the objection above.
+    Shrinking the plate within the frame is exactly what a more distant camera does, and
+    it removes no food at all, so the calorie label stays true. That asymmetry matters:
+    a fixed overhead rig at constant height means apparent size in pixels *is* real size,
+    and a model trained only on it learns to read scale off the image. Measured on this
+    model, simulating unknown camera distance costs 12.5 points of calorie error, 18.1%
+    to 30.6%, and interval coverage falls from 64.6% to 42.9%. See
+    ``scripts/measure_scale_dependence.py``. ``zoom_out=1.0`` disables it.
     """
     size, mode, antialias = _resize_spec(size)
     mean, std = meta.normalization()
-    return v2.Compose(
-        [
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.RandomResizedCrop(size, scale=scale, interpolation=mode, antialias=antialias),
-            v2.RandomHorizontalFlip(),
-            v2.RandomPerspective(distortion_scale=0.3, p=0.5),
-            v2.RandomRotation(degrees=15, interpolation=mode),
-            v2.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.03),
-            v2.Normalize(mean=mean, std=std),
-        ]
-    )
+
+    steps: list = [
+        v2.ToImage(),
+        v2.ToDtype(torch.float32, scale=True),
+    ]
+
+    if zoom_out > 1.0:
+        steps.append(RandomZoomOut(max_factor=zoom_out, p=0.5, interpolation=mode))
+
+    steps += [
+        v2.RandomResizedCrop(size, scale=scale, interpolation=mode, antialias=antialias),
+        v2.RandomHorizontalFlip(),
+        v2.RandomPerspective(distortion_scale=0.3, p=0.5),
+        v2.RandomRotation(degrees=15, interpolation=mode),
+        v2.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.03),
+        v2.Normalize(mean=mean, std=std),
+    ]
+    return v2.Compose(steps)
