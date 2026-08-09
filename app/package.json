@@ -37,7 +37,15 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:android": "eas build --profile development --platform android"
+    "build:android": "eas build --profile development --platform android",
+    "postinstall": "node scripts/link-native-modules.mjs"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "searchPaths": [
+        "../node_modules"
+      ]
+    }
+  }
 }

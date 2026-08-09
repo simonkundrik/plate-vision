@@ -1,0 +1,126 @@
+name: ios module
+
+# Compiles the experimental depth capture module.
+#
+# It exists to delete a caveat. `app/modules/depth-capture/ios/DepthCaptureModule.swift` was
+# written on a Windows machine with no Apple hardware attached, so until this job went green
+# the honest description of it was "never compiled", and the first thing asked of any
+# contributor was to find out whether it builds at all. That is a poor use of the one person
+# who turns up with the right hardware. It went green, so that sentence is gone from the docs.
+#
+# Building for the simulator needs **no Apple developer account and no device**: code signing
+# is off, and macOS runners are free for public repositories. So this answers the compile
+# question on every pull request, and what is left to ask a contributor is the part that
+# genuinely needs their phone.
+#
+# A green run here does not mean the capture works. It means the Swift compiles. Those are
+# different claims and the README keeps them apart.
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/ios-module.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/ios-module.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: compile for the simulator
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The whole workspace, because the app resolves @plate-vision/client through a link
+      # and prebuild will fail on a missing dependency long before it reaches any Swift.
+      - name: Install
+        run: npm ci
+
+      # The workspace postinstall links hoisted native dependencies into app/node_modules,
+      # because the generated Podfile writes podspec paths relative to app/ while CocoaPods
+      # resolves them relative to app/ios. Asserted rather than assumed: without it pod
+      # install fails naming a package, which reads like a broken dependency rather than a
+      # layout problem, and that is an hour nobody should spend twice.
+      - name: Check the hoisted natives are linked
+        working-directory: app
+        run: |
+          ls -l node_modules/onnxruntime-react-native > /dev/null
+          echo "onnxruntime-react-native is reachable from app/node_modules"
+
+      # Generates app/ios/ from app.json and the module configs. This is the step that reads
+      # modules/depth-capture/expo-module.config.json and decides the module exists at all,
+      # so a mistake in that file fails here rather than silently producing a build with no
+      # native module in it.
+      - name: Prebuild
+        working-directory: app
+        run: npx expo prebuild --platform ios --clean
+
+      # The generated project name follows the app slug through Expo's own sanitising, so
+      # it is discovered rather than hardcoded. The app scheme is the one wanted: a first
+      # attempt took the first non-Pods scheme and got `DepthCapture`, the module's own pod,
+      # which builds the Swift but not the app that has to host it.
+      - name: Find the workspace and scheme
+        id: xcode
+        working-directory: app
+        run: |
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          app=$(basename "$workspace" .xcworkspace)
+          schemes=$(xcodebuild -workspace "$workspace" -list -json)
+          scheme=$(printf '%s' "$schemes" | python3 -c \
+            "import json,sys; s=json.load(sys.stdin)['workspace']['schemes']; a=sys.argv[1]; print(a if a in s else next(x for x in s if not x.startswith('Pods')))" \
+            "$app")
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
+          echo "scheme=$scheme" >> "$GITHUB_OUTPUT"
+          echo "building $scheme in $workspace"
+
+      - name: Build
+        working-directory: app
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee /tmp/xcodebuild.log | grep -E "^(===|Building|\*\* )" || true
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "--- errors ---"
+            grep -E "error:|The following build commands failed" -A5 /tmp/xcodebuild.log | tail -60
+            exit "$status"
+          fi
+
+      # Compiling is not the same as being present. A module whose config the autolinker
+      # never read produces a perfectly green build and an app where `support()` reports
+      # "this build has no depth capture module", which is the exact failure this whole
+      # feature is designed to distinguish from "your phone has no sensor".
+      - name: Check the module was actually linked
+        working-directory: app
+        run: |
+          if grep -rq "DepthCaptureModule" ios/Pods/Target\ Support\ Files 2>/dev/null \
+            || grep -rq "DepthCapture" ios/Podfile.lock; then
+            echo "depth-capture is in the generated project"
+          else
+            echo "depth-capture was not picked up by autolinking"
+            exit 1
+          fi

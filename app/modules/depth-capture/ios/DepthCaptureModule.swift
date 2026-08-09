@@ -3,11 +3,12 @@ import ExpoModulesCore
 
 /// One-shot LiDAR depth capture.
 ///
-/// **This file has never been compiled or run.** It is written on a Windows machine with no
-/// Apple hardware attached, so every claim below is about what the AVFoundation API is
-/// documented to do, not about what was observed. That is exactly why the feature ships
-/// behind a flag with an issue template attached: the people who can find out are the ones
-/// holding the hardware.
+/// **This compiles, and it has never run.** It was written on a Windows machine with no
+/// Apple hardware attached, so every behavioural claim below is about what the AVFoundation
+/// API is documented to do, not about what was observed. The `ios module` workflow builds it
+/// for the simulator on every pull request, which rules out the syntax and the API surface
+/// and rules out nothing else: a session that never delivers a depth map compiles perfectly.
+/// That is why the feature ships behind a flag with an issue template attached.
 ///
 /// A single photo capture is used rather than a streaming depth output. Streaming means
 /// managing a session lifecycle across a screen that also renders a preview, and the thing

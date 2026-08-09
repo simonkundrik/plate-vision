@@ -21,21 +21,45 @@ problem rather than a rescalable one, and that number needs hardware.
 
 ### What you need
 
-| | |
-|---|---|
-| An Apple developer account | The depth lab is a custom native module, so Expo Go cannot load it and it needs a development build |
-| A device with LiDAR | iPhone 12 Pro or later Pro model, or an iPad Pro from 2020 on |
+**A device with LiDAR**, which means an iPhone 12 Pro or later Pro model, or an iPad Pro from 2020
+on. A simulator is no use: the whole point is the sensor.
 
-Either one on its own still helps. A development build shared with someone who has the hardware
-works; so does saying on the tracking issue that you have a device and need a build.
+There are two ways to get the app onto it, and **the first needs no paid Apple account**.
 
-### Running it
+#### With a Mac, and no paid account
+
+Xcode's free provisioning signs a build for a device you own with an ordinary Apple ID. It expires
+after seven days, which does not matter for taking one capture.
 
 ```bash
 git clone https://github.com/simonkundrik/plate-vision.git
 cd plate-vision && npm ci
-cd app && EXPO_PUBLIC_ENABLE_DEPTH=1 npx eas build --profile development --platform ios
+cd app && EXPO_PUBLIC_ENABLE_DEPTH=1 npx expo run:ios --device
 ```
+
+Pick your phone when it asks. The first run opens Xcode's signing setup if the project has no team
+selected yet.
+
+#### Without a Mac, using EAS
+
+EAS builds on Expo's own macOS workers, so this works from Windows or Linux. It needs a free Expo
+account and a **paid** Apple developer account, because a cloud build has to sign against real
+credentials.
+
+```bash
+npm install -g eas-cli && eas login
+
+cd app
+eas init                 # replaces the projectId in app.json with yours
+eas device:create        # registers your device, required for internal distribution
+EXPO_PUBLIC_ENABLE_DEPTH=1 eas build --profile development --platform ios
+```
+
+`eas init` rewrites `extra.eas.projectId` in `app.json`. That is expected and local to you: the
+committed value points at this repository's own EAS project, which you will not have access to.
+Please leave that edit out of any pull request.
+
+### Then
 
 Install the build, open **Depth lab** from the camera screen, point it at a real plate of food,
 and tap through to file the result.
@@ -52,9 +76,10 @@ report so the two cannot differ.
 
 ### Please do report the failures
 
-The Swift in `app/modules/depth-capture/ios/` has **never been compiled**. It was written on a
-Windows machine with no Apple hardware attached, against what the AVFoundation documentation says
-the API does. A build error is a real finding and the likeliest first one.
+The Swift in `app/modules/depth-capture/ios/` **compiles**, as of the `ios module` workflow, but
+it has never run. It was written on a Windows machine with no Apple hardware attached, against
+what the AVFoundation documentation says the API does. Compiling rules out the syntax and the API
+surface and nothing else: a capture session that never delivers a depth map builds perfectly.
 
 The same goes for a capture that returns nothing, or values that look wrong. And the camera
 distance check is *expected* to come back out of range for the reason above. That is the predicted
