@@ -7,13 +7,20 @@ Experimental. One depth frame, measured against the training distribution, repor
 
 Nutrition5k's own published result is that feeding depth to the network as a fourth input
 channel takes calorie MAE from 70.6 to 47.6 kcal, a 33% reduction, and depth is what the
-market leader ships via iPhone LiDAR. That makes depth the single largest untried lever in
-this project.
+market leader ships via iPhone LiDAR. That made depth the single largest untried lever here.
 
-There is a problem with acting on it. Nutrition5k's depth comes from a **fixed overhead rig
-at roughly 3.5 m**, and a phone is held over a plate at arm's length. Whether a model trained
-on the first works on the second is an empirical question, and the arithmetic already says
-part of the answer will be no:
+**It has since been tried, and it lost.** Phase H3 ran that experiment against an otherwise
+identical run and took calorie MAE from 54.7 to 57.6, with an ablation showing the model
+ignored the channel: real depth is worth 1.2 kcal against a constant. See the
+[model card](../../../MODEL_CARD.md).
+
+That does not make this module pointless, but it does change what a capture is for. It is now
+a narrower question with a negative result behind it, rather than a lever worth chasing.
+
+The question it still answers: Nutrition5k's depth comes from a **fixed overhead rig at
+roughly 3.5 m**, and a phone is held over a plate at arm's length. Whether a model trained on
+the first works on the second is empirical, and the arithmetic already says part of the
+answer will be no:
 
 `platevision/depth.py` normalises against a 6,000 mm ceiling, so the rig's 3,562 mm median
 lands at 0.594, and training standardises around a mean of 0.612 with a standard deviation of

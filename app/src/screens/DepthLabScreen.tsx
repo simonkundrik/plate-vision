@@ -95,6 +95,11 @@ export const DepthLabScreen = ({ onBack }: { onBack: () => void }) => {
         it is what tells us whether the depth channel can be made to work on a phone at all.
       </Text>
       <Text style={styles.body}>
+        Worth saying plainly: training a model on that fixed-camera depth has already been
+        tried, and it made calorie estimates worse rather than better. What you measure here
+        is still unmeasured elsewhere, but it is a smaller question than it looks.
+      </Text>
+      <Text style={styles.body}>
         No photo and no depth map leave your device. Only the summary shown below is sent, and
         only if you tap through to file it.
       </Text>

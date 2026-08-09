@@ -9,6 +9,12 @@ body:
         Thank you for running this. Nobody working on this project owns a device with a
         depth sensor, so every number here is one that could not otherwise be measured.
 
+        **Worth knowing before you spend time on it:** depth as a fourth input channel has
+        now been tried on the training data and it did not help. It took calorie MAE from
+        54.7 to 57.6, and the model turned out to be ignoring the channel. See the model
+        card. A capture still answers whether phone depth resembles rig depth, which is
+        genuinely unmeasured, but it is a smaller prize than it was.
+
         **A capture that fails is as useful as one that works**, and a capture whose
         distance check comes back red is the expected result rather than a bug: the model
         was trained on a fixed camera about 3.5 m above the food, and you are holding a

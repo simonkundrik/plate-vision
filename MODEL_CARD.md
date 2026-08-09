@@ -177,6 +177,44 @@ and flat dishes sit near the noise floor. Correlation with mass ranged from 0.28
 across subsets. The planned native depth capture was cancelled on this evidence, before any
 of it was written.
 
+**Depth as a fourth input channel did not reproduce the paper's gain. It lost.** This is the
+change with the strongest published evidence behind it: Nutrition5k reports 70.6 to 47.6 kcal
+MAE, a 33% reduction, from handing the network the depth map alongside RGB. Phase H3 is that
+experiment, run against phase D with an identical configuration, the same selection rule, and
+both checkpoints selected at epoch 21.
+
+| | calorie MAE | median APE |
+|---|---|---|
+| phase D, RGB | **54.7 kcal** | **19.6%** |
+| phase H3, RGB + depth | 57.6 kcal | 20.5% |
+
+**The model was not reading the channel.** Replacing the depth plane with a constant, and
+separately with another dish's depth, on the same 506 test dishes:
+
+| depth channel | calorie MAE | median APE |
+|---|---|---|
+| real | 57.64 | 20.49% |
+| a constant | 58.86 | 20.96% |
+| another dish's | 58.25 | 20.79% |
+
+Real depth is worth **1.2 kcal** against a channel carrying no information at all, and 0.6
+against one carrying the wrong dish's. So this is not depth costing more than it pays. It is a
+model that routed around an input, and the 2.9 kcal it lost to phase D is the price of a wider
+stem rather than a measurement of depth.
+
+Two readings are consistent with that, and this project cannot currently tell them apart. The
+RGB baseline here is already 22% ahead of the paper's, so there may be less for depth to add
+than there was for theirs. Or 60 epochs at hyperparameters tuned for RGB, on a stem adapted
+from RGB pretraining, is not enough for the channel to earn its place. **The honest claim is
+that depth did not help here, not that depth cannot help.**
+
+Reproduce with `scripts/measure_depth_contribution.py`.
+
+The run also exposed a hole in the evaluator, which fed three channels to a four-channel model
+and died in the first convolution after sixty epochs had trained. It reported as a failed run
+when only its last step had failed, which is the second time in this project that a working
+result has been nearly discarded because the thing measuring it broke.
+
 **A scale reference would not recover what unknown camera distance costs.** The route was
 going to detect a dinner plate, whose diameter is known to within a couple of centimetres,
 and use it to convert apparent size into real size. Measuring the ceiling first, as with
@@ -245,6 +283,13 @@ would make depth a harder problem rather than a rescalable one. The app carries 
 estimate-free **depth lab** that measures exactly this and files it, because that number needs
 hardware this project does not have. Until captures come back, nothing here claims phone depth
 works.
+
+That question is now downstream of a larger one. **Rig depth, which is the best depth this
+dataset offers, did not produce a gain in this pipeline at all**, and the ablation above says
+the model ignored it. Asking whether a phone's noisier version transfers is only worth doing
+once something has been shown to benefit from the clean version. The depth lab is kept because
+it costs nothing to leave running and the measurement is not obtainable any other way, not
+because a capture is expected to unlock the paper's 33%.
 
 ## Where this sits against published work and against the market
 
