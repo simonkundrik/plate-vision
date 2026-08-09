@@ -136,7 +136,14 @@ def audit(dishes: dict[str, n5k.Dish], usable: set[str]) -> None:
     print(f"  calories min/median/max:           {cals[0]:.0f} / {mid:.0f} / {cals[-1]:.0f}")
 
 
-def download(out: Path, limit: int | None, workers: int, force: bool, depth: bool = False) -> int:
+def download(
+    out: Path,
+    limit: int | None,
+    workers: int,
+    force: bool,
+    depth: bool = False,
+    max_failures: int = 5,
+) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "metadata").mkdir(exist_ok=True)
     (out / "splits").mkdir(exist_ok=True)
@@ -193,7 +200,17 @@ def download(out: Path, limit: int | None, workers: int, force: bool, depth: boo
                 print(f"  {i:,}/{len(pending):,}")
 
     print(f"\nDone. fetched {ok:,}, failed {failed:,}")
-    return 1 if failed else 0
+
+    # A handful of failures is the dataset, not the download. dish_1564159636 has a 0-byte
+    # depth_raw.png on Google's servers, and returning non-zero for it fails an entire run
+    # over 1 file in 3,262. Many failures still mean something is wrong with the network or
+    # the bucket, and those should stop the caller.
+    if failed > max_failures:
+        print(f"  more than {max_failures} failures; treating this as a broken download")
+        return 1
+    if failed:
+        print(f"  within the {max_failures} tolerated; the affected dishes are simply absent")
+    return 0
 
 
 def _fetch_one(imagery: Path, dish_id: str, depth: bool = False) -> None:
@@ -233,6 +250,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--force", action="store_true", help="re-fetch files already on disk")
     parser.add_argument(
+        "--max-failures",
+        type=int,
+        default=5,
+        help="tolerate this many unfetchable dishes; the dataset has at least one",
+    )
+    parser.add_argument(
         "--depth",
         action="store_true",
         help="also fetch depth_raw.png, needed to derive per-dish volume",
@@ -241,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.report:
         return report()
-    return download(args.out, args.limit, args.workers, args.force, args.depth)
+    return download(args.out, args.limit, args.workers, args.force, args.depth, args.max_failures)
 
 
 if __name__ == "__main__":

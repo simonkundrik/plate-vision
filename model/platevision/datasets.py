@@ -53,6 +53,10 @@ class IndexStats:
     missing_image: int
     nonpositive_calories: int
     kept: int
+    # Defaulted so every existing construction still type-checks. Only non-zero when depth
+    # was required: dish_1564159636 has a 0-byte depth_raw.png upstream, and one broken file
+    # in 3,262 should cost one dish rather than the run.
+    missing_depth: int = 0
 
 
 def split_filename(split: str) -> str:
@@ -75,6 +79,7 @@ def build_nutrition5k_index(
     split: str,
     *,
     drop_nonpositive_calories: bool = True,
+    require_depth: bool = False,
 ) -> tuple[list[NutritionSample], IndexStats]:
     """Build the sample list for one Nutrition5k split.
 
@@ -96,7 +101,7 @@ def build_nutrition5k_index(
     ids = n5k.parse_split_ids(split_path.read_text(encoding="utf-8"))
 
     samples: list[NutritionSample] = []
-    missing_metadata = missing_image = nonpositive = 0
+    missing_metadata = missing_image = nonpositive = missing_depth = 0
 
     for dish_id in ids:
         dish = dishes.get(dish_id)
@@ -111,6 +116,13 @@ def build_nutrition5k_index(
 
         if drop_nonpositive_calories and dish.calories <= 0:
             nonpositive += 1
+            continue
+
+        # Checked here rather than at load time. A dish without a depth map would otherwise
+        # raise several hundred steps into an epoch, after the GPU time is spent, and the
+        # dataset genuinely ships one broken file.
+        if require_depth and not (image_path.parent / "depth_raw.png").is_file():
+            missing_depth += 1
             continue
 
         samples.append(
@@ -128,6 +140,7 @@ def build_nutrition5k_index(
         missing_image=missing_image,
         nonpositive_calories=nonpositive,
         kept=len(samples),
+        missing_depth=missing_depth,
     )
     return samples, stats
 
