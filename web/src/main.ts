@@ -13,8 +13,13 @@ import {
   decodeImage,
   scaleNutrition,
   type Analysis,
+  type EvidenceRoute,
+  type Interval,
   type NutritionEstimate,
 } from "@plate-vision/client";
+// Separate entry point on purpose: this is the only import in the project that touches the
+// network, and burying it in the main barrel would make that easy to miss.
+import { isValidBarcode, lookupBarcode, nutritionFromProduct } from "@plate-vision/client/barcode";
 
 const MODEL_DIR = `${import.meta.env.BASE_URL}model/`;
 
@@ -58,6 +63,20 @@ const loadModel = async (): Promise<PlateVision> => {
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const round = (value: number) => Math.round(value);
 
+/**
+ * What each route means, in the words someone reading a calorie figure needs.
+ *
+ * Shown on every estimate rather than only the interesting ones. A number whose provenance
+ * appears only when it is flattering is worse than no label at all, because the absence
+ * stops meaning anything.
+ */
+const ROUTE_NOTE: Record<EvidenceRoute, string> = {
+  barcode: "Read off the packet. The composition is stated, not estimated.",
+  chain_menu: "From the restaurant's published figures.",
+  scale_reference: "Portion size recovered from an object of known size in the photo.",
+  absolute: "Estimated from the photograph alone. Median error is about 19% on the test set.",
+};
+
 const renderNutrition = (nutrition: NutritionEstimate | null, reason: string | null) => {
   const container = el("nutrition");
 
@@ -73,20 +92,55 @@ const renderNutrition = (nutrition: NutritionEstimate | null, reason: string | n
   }
 
   const scaled = scaleNutrition(nutrition, 1);
+
+  // A range is a claim about uncertainty. When there is none, "2-2 g" states it twice and
+  // reads as a formatting bug rather than as a quantity somebody knows.
+  const span = (interval: Interval, unit: string) =>
+    round(interval.low) === round(interval.high)
+      ? `${round(interval.median)} ${unit}`
+      : `${round(interval.low)}&ndash;${round(interval.high)} ${unit}`;
+
   const rows = (["protein", "fat", "carbohydrate", "mass"] as const)
     .map(
       (key) =>
         `<tr><th>${key[0].toUpperCase()}${key.slice(1)}</th>
-         <td>${round(scaled[key].low)}&ndash;${round(scaled[key].high)} g</td></tr>`,
+         <td>${span(scaled[key], "g")}</td></tr>`,
     )
     .join("");
 
+  // A zero-width interval is not the model hedging less, it is the user having weighed the
+  // food. Printing "120-120 kcal" reads as a rounding artifact rather than a known answer.
+  const known = scaled.energy.low === scaled.energy.high;
+
   container.innerHTML = `
-    <p class="range-label">Estimated energy</p>
-    <p class="range">${round(scaled.energy.low)}&ndash;${round(scaled.energy.high)}
-      <span class="unit">kcal</span></p>
-    <p class="muted">most likely ${round(scaled.energy.median)} kcal</p>
-    <table class="macros">${rows}</table>`;
+    <p class="range-label">${known ? "Energy" : "Estimated energy"}</p>
+    <p class="range">${span(scaled.energy, "")}<span class="unit">kcal</span></p>
+    <p class="muted">${known ? "from a stated mass" : `most likely ${round(scaled.energy.median)} kcal`}</p>
+    <table class="macros">${rows}</table>
+    <p class="route"><span class="route-tag">${nutrition.route.replace("_", " ")}</span>
+      ${ROUTE_NOTE[nutrition.route]}</p>`;
+};
+
+/** The model's own mass estimate, when it has one, so the barcode route can reuse it. */
+let predictedMass: Interval | null = null;
+
+/**
+ * How much of the product was eaten.
+ *
+ * A typed number is a **stated** mass, so it becomes a zero-width interval and the calorie
+ * answer is exact: the packet is not guessing about composition and the user is not guessing
+ * about the portion. Leaving it blank falls back to the model's estimate, which is where all
+ * the remaining uncertainty then lives.
+ */
+const massForLookup = (typed: string): Interval | string => {
+  const trimmed = typed.trim();
+  if (trimmed) {
+    const grams = Number(trimmed);
+    if (!Number.isFinite(grams) || grams <= 0) return "Grams has to be a positive number.";
+    return { low: grams, median: grams, high: grams };
+  }
+  if (predictedMass) return predictedMass;
+  return "This model cannot estimate portion mass, so enter the grams you ate.";
 };
 
 const render = (analysis: Analysis) => {
@@ -102,6 +156,12 @@ const render = (analysis: Analysis) => {
     .join("");
 
   renderNutrition(analysis.nutrition, analysis.nutritionUnavailableReason);
+
+  predictedMass = analysis.nutrition?.mass ?? null;
+  if (predictedMass) {
+    el<HTMLInputElement>("grams").placeholder = `${round(predictedMass.median)} (estimated)`;
+  }
+  el("barcode-status").textContent = "";
 
   el("timing").textContent = `Analysed in this tab in ${Math.round(analysis.inferenceMs)} ms. Nothing was uploaded.`;
   result.hidden = false;
@@ -156,6 +216,42 @@ const main = async () => {
     } catch {
       say("Could not open the camera. Choosing a photo works the same way.", "error");
     }
+  });
+
+  el("lookup").addEventListener("click", async () => {
+    const note = el("barcode-status");
+    const mass = massForLookup(el<HTMLInputElement>("grams").value);
+    if (typeof mass === "string") {
+      note.textContent = mass;
+      return;
+    }
+
+    // Validated before the request is announced, not just before it is made. `lookupBarcode`
+    // already declines to send a malformed code, so saying "asking Open Food Facts" first
+    // would claim a request that never happens, on the one control here that leaves the
+    // device. Momentary and still false.
+    const code = el<HTMLInputElement>("barcode").value;
+    if (!isValidBarcode(code)) {
+      note.textContent = `${code.trim() || "That"} is not a barcode. Expected 8 to 14 digits.`;
+      return;
+    }
+
+    note.textContent = "Asking Open Food Facts…";
+    const found = await lookupBarcode(code);
+
+    if (!found.found) {
+      // A miss is an ordinary outcome for a community database, roughly a third of scans.
+      // Saying which barcode missed beats a bare "not found".
+      note.textContent = found.reason;
+      return;
+    }
+
+    const { product } = found;
+    // Open Food Facts often repeats the product name as the brand, and "Nutella (Nutella)"
+    // reads as a bug in this page rather than as a quirk of the database.
+    const brand = product.brand && product.brand !== product.name ? ` (${product.brand})` : "";
+    note.textContent = `${product.name}${brand} — ${round(product.energyPer100g)} kcal per 100 g`;
+    renderNutrition(nutritionFromProduct(product, mass), null);
   });
 
   shoot.addEventListener("click", async () => {

@@ -21,6 +21,7 @@ export type {
   Analysis,
   AnalyseOptions,
   DishPrediction,
+  EvidenceRoute,
   Interval,
   LoadOptions,
   ModelBundle,

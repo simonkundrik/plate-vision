@@ -41,6 +41,31 @@
 
         <div id="nutrition"></div>
 
+        <!--
+          The barcode route. The vision model is worst at exactly the case this is best at:
+          a wrapped product, where the composition is printed on the packet and the pixels
+          show a wrapper.
+
+          This is the one control on the page that leaves the device, so it says so. The
+          barcode goes to Open Food Facts; the photograph does not.
+        -->
+        <details id="packaged" class="packaged">
+          <summary>Packaged food? Read it off the barcode instead</summary>
+          <p class="muted">
+            The photo stays here. The barcode digits are sent to
+            <a href="https://world.openfoodfacts.org">Open Food Facts</a> to look up what the
+            packet says.
+          </p>
+          <div class="barcode-row">
+            <label for="barcode">Barcode</label>
+            <input id="barcode" inputmode="numeric" autocomplete="off" placeholder="3017620422003" />
+            <label for="grams">Grams eaten</label>
+            <input id="grams" inputmode="decimal" autocomplete="off" placeholder="30" />
+            <button class="button secondary" id="lookup" type="button">Look it up</button>
+          </div>
+          <p id="barcode-status" class="muted" aria-live="polite"></p>
+        </details>
+
         <p id="timing" class="muted timing"></p>
       </section>
 

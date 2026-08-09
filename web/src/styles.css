@@ -201,3 +201,66 @@ footer {
 footer a {
   color: var(--accent);
 }
+
+/*
+ * Route provenance.
+ *
+ * Shown on every estimate, not only the flattering ones. A label that appears selectively
+ * stops carrying information, because its absence starts meaning something too.
+ */
+.route {
+  margin: 1.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.route-tag {
+  display: inline-block;
+  margin-right: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* The one control on the page that leaves the device, so it is set apart rather than
+   sitting inline with the on-device results above it. */
+.packaged {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule, rgba(128, 128, 128, 0.25));
+}
+
+.packaged summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.barcode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.barcode-row label {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.barcode-row input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--rule, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
