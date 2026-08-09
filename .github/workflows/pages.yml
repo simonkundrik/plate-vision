@@ -12,7 +12,7 @@ on:
     inputs:
       model_tag:
         description: "Model release tag to deploy"
-        default: model-v0.1.0
+        default: model-v0.2.0
 
 concurrency:
   group: pages
@@ -48,7 +48,7 @@ jobs:
       - name: Fetch the model
         run: npm run fetch-model --workspace web
         env:
-          MODEL_TAG: ${{ inputs.model_tag || 'model-v0.1.0' }}
+          MODEL_TAG: ${{ inputs.model_tag || 'model-v0.2.0' }}
 
       - name: Typecheck
         run: npm run typecheck

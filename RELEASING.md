@@ -7,7 +7,7 @@ the other moved.
 | What | Tag | Where it goes |
 |---|---|---|
 | `@plate-vision/client` | `client-v0.1.0` | npm |
-| Model artifact + manifest | `model-v0.1.0` | GitHub Releases |
+| Model artifact + manifest | `model-v0.2.0` | GitHub Releases |
 
 ## The client package
 

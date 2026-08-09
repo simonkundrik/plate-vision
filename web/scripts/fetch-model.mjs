@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "..", "public", "model");
 
-const TAG = process.env.MODEL_TAG ?? "model-v0.1.0";
+const TAG = process.env.MODEL_TAG ?? "model-v0.2.0";
 const base = `https://github.com/simonkundrik/plate-vision/releases/download/${TAG}`;
 
 const get = async (url) => {
