@@ -1,23 +1,28 @@
 # Contributing
 
-## The one thing that would help most
+## A depth capture from an iPhone Pro or iPad Pro
 
-**A depth capture from an iPhone Pro or iPad Pro.**
+Still wanted, and worth less than it was. Please read this part before spending anything.
 
-Depth is the largest untried accuracy lever in this project. Nutrition5k's own published result is
-that feeding depth to the network as a fourth input channel takes calorie MAE from 70.6 to 47.6,
-a 33% reduction, and depth is what the market leader ships via iPhone LiDAR.
+Depth had the strongest published evidence of anything untried here: Nutrition5k reports 70.6 to
+47.6 kcal MAE, a 33% reduction, from feeding the network a depth map alongside RGB, and depth is
+what the market leader ships via iPhone LiDAR.
 
-What blocks acting on it is not a training run and not an idea. It is that Nutrition5k's depth
-comes from a **fixed overhead rig at about 3.5 m**, a phone is held over a plate at arm's length,
-and I own neither a device with a depth sensor nor an Apple developer account to build for one.
+**That experiment has now been run on this pipeline and it lost.** Against an otherwise identical
+run, depth took calorie MAE from 54.7 to 57.6, and an ablation says the model was ignoring the
+channel: replacing real depth with a constant costs 1.2 kcal, and with another dish's depth, 0.6.
+The full numbers are in the [model card](MODEL_CARD.md), reproducible with
+`model/scripts/measure_depth_contribution.py`.
 
-Part of the answer is already derivable and is written up in the
-[model card](MODEL_CARD.md): a phone at 300 mm normalises about eleven standard deviations outside
-the training range, so raw absolute depth cannot transfer as trained. What is **not** derivable is
-whether a phone resolves real food as cleanly as the rig does. The rig drops about 16% of its
-pixels and 39% on its worst frame. A phone doing substantially worse would make depth a harder
-problem rather than a rescalable one, and that number needs hardware.
+So the remaining question is narrower than it was. Nutrition5k's depth comes from a **fixed
+overhead rig at about 3.5 m** and a phone is held over a plate at arm's length. A phone at 300 mm
+normalises about eleven standard deviations outside the training range, so raw absolute depth
+cannot transfer as trained. What is not derivable is whether a phone resolves real food as cleanly
+as the rig does: the rig drops about 16% of its pixels and 39% on its worst frame.
+
+**A capture answers that, and nothing more.** It is still the only way to get the number, and the
+ablation says our pipeline ignored depth rather than that depth is worthless, so someone may yet
+do better with the same data. But nobody should buy anything expecting the paper's 33%.
 
 ### What you need
 

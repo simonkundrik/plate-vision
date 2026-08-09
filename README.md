@@ -185,24 +185,51 @@ Recorded here from the start rather than discovered by a reader:
   limit**: Nutrition5k dishes carry a median of 4 ingredients and a mean of 7.1, so every
   calorie figure here is already a mixed-plate number.
 
-## The depth experiment, and why it needs someone else's phone
+## The depth experiment, and what it measured
 
-Depth is the largest untried accuracy lever here, and it is what the market leader ships via
-iPhone LiDAR. What blocks it is not a training run. It is that Nutrition5k's depth comes from a
-**fixed overhead rig at about 3.5 m** and a phone is held over a plate at arm's length, and nobody
-working on this project owns a device with a depth sensor to find out whether those are close
-enough to be the same problem.
+Depth was the change with the strongest published evidence behind it. Nutrition5k reports that
+handing the network a depth map alongside RGB takes calorie MAE from 70.6 to 47.6, a 33%
+reduction, and depth is what the market leader ships via iPhone LiDAR.
 
-Part of the answer is already derivable. `platevision/depth.py` normalises against a 6,000 mm
-ceiling, so the rig's 3,562 mm median lands at 0.594 against a training mean of 0.612 with a
-standard deviation of 0.052. A phone at 300 mm normalises to 0.05, roughly **eleven standard
-deviations** outside anything the model has seen. Raw absolute depth from a phone will not
-transfer, and `depth.heightAbove`, which subtracts the camera distance and keeps the shape, is the
-channel that might.
+**It was run, and it lost.** Phase H3 is that experiment against phase D, identical configuration
+but for the depth flag, same selection rule, both checkpoints at epoch 21:
+
+| | calorie MAE | median APE |
+|---|---|---|
+| phase D, RGB | **54.7 kcal** | **19.6%** |
+| phase H3, RGB + depth | 57.6 kcal | 20.5% |
+
+**And the model was not reading the channel.** Replacing the depth plane with a constant, or with
+another dish's depth, barely moves anything:
+
+```
+real depth        57.64 kcal    20.49%
+a constant        58.86         20.96%
+another dish's    58.25         20.79%
+```
+
+Real depth is worth 1.2 kcal against a channel carrying nothing. So this is not depth costing
+more than it pays; it is a model that routed around an input, and the 2.9 kcal lost to phase D is
+the price of a wider stem. The honest claim is that depth did not help **here**, at 60 epochs on
+hyperparameters tuned for RGB, and not that depth cannot help. Reproduce with
+`model/scripts/measure_depth_contribution.py`.
+
+### The phone question, which is now downstream of that
+
+Nutrition5k's depth comes from a **fixed overhead rig at about 3.5 m** and a phone is held over a
+plate at arm's length. Part of the gap is derivable: `platevision/depth.py` normalises against a
+6,000 mm ceiling, so the rig's 3,562 mm median lands at 0.594 against a training mean of 0.612
+with a standard deviation of 0.052, while a phone at 300 mm normalises to 0.05, roughly **eleven
+standard deviations** outside anything the model has seen. Raw absolute depth from a phone will
+not transfer, and `depth.heightAbove`, which subtracts the camera distance and keeps the shape, is
+the channel that might.
 
 What cannot be derived is whether a phone sees a plate of real food as cleanly as the rig does:
-the rig drops about 16% of its pixels and reaches 39% on its worst frame, and a phone struggling
-far more than that would make depth a harder problem rather than a rescalable one.
+the rig drops about 16% of its pixels and reaches 39% on its worst frame.
+
+**That is a smaller prize than it was a week ago.** The clean version of this signal has now been
+measured and produced no gain, so asking whether the noisier version transfers is a question
+worth keeping open rather than a lever worth chasing.
 
 So the app carries a **depth lab**: one capture, measured against the training distribution, every
 number shown, and a one-tap prefilled issue. It is off unless a build sets
@@ -211,14 +238,23 @@ device. The Swift that talks to the sensor compiles on every pull request and ha
 is stated on the screen, in the module's [README](app/modules/depth-capture/README.md), and in the
 issue template.
 
-### Help wanted: this needs hardware and an account I do not have
+### Still wanted, with the prize marked down
 
-What stands between the merged code and a number that settles the question is a **device with
-LiDAR**: an iPhone 12 Pro or later Pro model, or an iPad Pro from 2020 on. I do not have one. A
-simulator is no use, since the sensor is the whole point.
+A capture from an **iPhone 12 Pro or later Pro model, or an iPad Pro from 2020 on** remains a
+measurement this project cannot take, and it is still welcome. What changed is what it buys.
 
-If you have one, there are two ways in, and **the first needs no paid Apple account**. Xcode's
-free provisioning signs a build for your own device with an ordinary Apple ID:
+Until the phase H3 result above, the pitch was that depth is the largest untried lever here and a
+capture would tell us whether a phone can reach it. Half of that is now measured and the answer
+was no: the clean rig version of the signal produced no gain, and the model ignored it. So a
+phone capture answers a narrower question, whether phone depth resembles rig depth at all, and
+that answer feeds a line of work whose first result was negative.
+
+It is written up honestly rather than withdrawn because the ablation says our pipeline **ignored**
+depth rather than that depth is worthless, and someone else may do better with the same data. But
+nobody should spend money on this expecting the paper's 33%.
+
+If you want to run it anyway, there are two ways in and **the first needs no paid Apple account**.
+Xcode's free provisioning signs a build for your own device with an ordinary Apple ID:
 
 ```bash
 git clone https://github.com/simonkundrik/plate-vision.git
@@ -227,20 +263,18 @@ cd app && EXPO_PUBLIC_ENABLE_DEPTH=1 npx expo run:ios --device
 ```
 
 Without a Mac, EAS builds on Expo's macOS workers instead, which does need a paid developer
-account. Both routes are written out step by step in [CONTRIBUTING.md](CONTRIBUTING.md).
+account. Both routes are written out step by step in [CONTRIBUTING.md](CONTRIBUTING.md). A
+simulator is no use either way, since the sensor is the whole point.
 
 Then open **Depth lab** on the camera screen, point it at a real plate of food, and tap through to
 file the result. The report is about a dozen summary numbers, shown to you in full before anything
 opens. No photo and no depth map are included.
 
-**A capture that fails is worth as much as one that works**, and so is a build that will not
-compile: the Swift has never been through a compiler, so a build error is a real finding and the
-first one anybody will hit. The distance check is *expected* to come back out of range, for the
-eleven-standard-deviations reason above. That is the predicted result, not a fault in your
-capture, and the app says so next to the number.
+**A capture that fails is worth as much as one that works.** The distance check is *expected* to
+come back out of range, for the eleven-standard-deviations reason above. That is the predicted
+result, not a fault in your capture, and the app says so next to the number.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), or the tracking issue labelled
-[`depth-capture`](../../issues?q=is%3Aissue+label%3Adepth-capture).
+Tracking issue: [`depth-capture`](../../issues?q=is%3Aissue+label%3Adepth-capture).
 
 ## Use it in your own app
 
