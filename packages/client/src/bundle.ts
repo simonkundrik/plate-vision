@@ -16,10 +16,10 @@
  * module's tests, so the boundary is now checked from both sides.
  */
 
-import type { ModelBundle, TargetTransform } from "./types";
+import type { ConformalOffsets, ModelBundle, TargetTransform } from "./types";
 
 /** Manifest versions this library understands. */
-export const SUPPORTED_SCHEMA_VERSIONS = [2];
+export const SUPPORTED_SCHEMA_VERSIONS = [3];
 
 type RawTransform = {
   mean?: unknown;
@@ -27,10 +27,18 @@ type RawTransform = {
   keys?: unknown;
 };
 
+type RawConformal = {
+  keys?: unknown;
+  offsets?: unknown;
+  alpha?: unknown;
+  calibration_size?: unknown;
+};
+
 type RawBundle = {
   schema_version?: unknown;
   heads_trained?: { logits?: unknown; nutrition_quantiles?: unknown };
   target_transform?: RawTransform | null;
+  conformal?: RawConformal | null;
   artifact?: { name?: unknown; bytes?: unknown; sha256?: unknown };
 };
 
@@ -98,6 +106,41 @@ export const parseBundle = (raw: unknown): ModelBundle => {
       nutritionQuantiles: heads.nutrition_quantiles,
     },
     targetTransform: parseTransform(source.target_transform),
+    conformal: parseConformal(source.conformal),
+  };
+};
+
+/**
+ * Interval widening measured on held-out data, or null when the model shipped without it.
+ *
+ * Not optional in spirit. Raw quantiles from this model cover about 82% of the truth while
+ * claiming 90%; the offsets take that to 90.5%. A bundle without them describes a model
+ * whose stated confidence is wrong, which is why the schema version was raised rather than
+ * this being added quietly: an older client refuses the bundle instead of silently
+ * under-covering.
+ */
+const parseConformal = (raw: RawConformal | null | undefined): ConformalOffsets | null => {
+  if (!raw) return null;
+
+  const { keys, offsets, alpha } = raw;
+  if (!isNumberArray(offsets)) {
+    throw new Error("bundle conformal offsets must be an array of numbers");
+  }
+  if (!Array.isArray(keys) || !keys.every((key) => typeof key === "string")) {
+    throw new Error("bundle conformal must name the targets its offsets apply to");
+  }
+  if (keys.length !== offsets.length) {
+    // Zipping mismatched lists would widen the wrong target, and an interval widened by
+    // another quantity's miss is worse than one that was never widened at all.
+    throw new Error(
+      `bundle conformal has ${keys.length} keys and ${offsets.length} offsets`,
+    );
+  }
+
+  return {
+    keys,
+    offsets,
+    alpha: typeof alpha === "number" ? alpha : 0.1,
   };
 };
 

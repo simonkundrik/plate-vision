@@ -72,6 +72,18 @@ export type TargetTransform = {
   keys: string[];
 };
 
+/**
+ * Per-target interval widening, fitted on held-out data by the exporter.
+ *
+ * Applied to the outer quantiles and not the median: conformal prediction says nothing
+ * about the point estimate, and the median was already the well-calibrated output.
+ */
+export type ConformalOffsets = {
+  keys: string[];
+  offsets: number[];
+  alpha: number;
+};
+
 /** Metadata published alongside a model artifact. */
 export type ModelBundle = {
   schemaVersion: number;
@@ -81,6 +93,7 @@ export type ModelBundle = {
     nutritionQuantiles: boolean;
   };
   targetTransform: TargetTransform | null;
+  conformal: ConformalOffsets | null;
 };
 
 export type LoadOptions = {

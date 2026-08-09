@@ -12,9 +12,10 @@ const transform: TargetTransform = {
 };
 
 const trainedBundle: ModelBundle = {
-  schemaVersion: 1,
+  schemaVersion: 3,
   headsTrained: { logits: true, nutritionQuantiles: true },
   targetTransform: transform,
+  conformal: null,
 };
 
 /**

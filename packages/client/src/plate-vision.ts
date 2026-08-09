@@ -1,5 +1,6 @@
 import { quantiles } from "./contract";
 import {
+  applyConformal,
   averageNutrition,
   averageProbabilities,
   toNutrition,
@@ -85,9 +86,15 @@ export class PlateVision {
     const transform = this.bundle.targetTransform;
     const perView = outputs.map((o) => toNutrition(o.nutrition, transform, quantiles.length));
 
+    // Widened last, after averaging. The offsets were fitted against the model's output,
+    // and applying them per view then averaging would apply them once and report them
+    // three times.
+    const averaged = averageNutrition(perView);
+    const conformal = this.bundle.conformal;
+
     return {
       dishes,
-      nutrition: averageNutrition(perView),
+      nutrition: conformal ? applyConformal(averaged, conformal) : averaged,
       nutritionUnavailableReason: null,
       inferenceMs,
     };

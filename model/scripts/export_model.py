@@ -139,6 +139,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--classifier", required=True, type=Path)
     parser.add_argument("--nutrition", type=Path, help="omit to export an untrained head")
+    parser.add_argument(
+        "--conformal",
+        type=Path,
+        help="conformal.json from the nutrition run; without it the intervals under-cover",
+    )
     parser.add_argument("--calibration-root", type=Path, help="food-101 directory")
     parser.add_argument("--calibration-images", type=int, default=64)
     parser.add_argument("--out", type=Path, default=Path("runs/export"))
@@ -222,8 +227,23 @@ def main(argv: list[str] | None = None) -> int:
     # without this the failure looks like a bad model rather than a bad download.
     digest = export.digest_artifact(artifact)
 
+    conformal_payload = None
+    if args.conformal:
+        conformal_payload = json.loads(args.conformal.read_text(encoding="utf-8"))
+        offsets = ", ".join(
+            f"{k} +/-{v:.0f}"
+            for k, v in zip(conformal_payload["keys"], conformal_payload["offsets"], strict=True)
+        )
+        print(f"conformal: {offsets}")
+    elif nutrition_trained:
+        # Loud, because the failure is silent otherwise: the client would present raw
+        # quantiles as a 90% interval when they cover about 82%.
+        print()
+        print("  WARNING: no --conformal offsets. The intervals will under-cover.")
+
     manifest = bundle.build_bundle(
         artifact=digest.as_dict(),
+        conformal=conformal_payload,
         heads_trained={"logits": True, "nutrition_quantiles": nutrition_trained},
         provenance=provenance,
         quantization=quant_report,

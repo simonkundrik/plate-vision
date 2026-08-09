@@ -25,7 +25,7 @@ describe("parseBundle on the published manifest", () => {
   it("reads the exporter's own output", () => {
     const bundle = parseBundle(published());
 
-    expect(bundle.schemaVersion).toBe(2);
+    expect(bundle.schemaVersion).toBe(3);
     expect(bundle.headsTrained.logits).toBe(true);
     expect(bundle.headsTrained.nutritionQuantiles).toBe(true);
   });
@@ -92,5 +92,90 @@ describe("parseBundle on an untrained nutrition head", () => {
 
     expect(bundle.headsTrained.nutritionQuantiles).toBe(false);
     expect(bundle.targetTransform).toBeNull();
+  });
+});
+
+describe("conformal offsets", () => {
+  it("are read from the published manifest", () => {
+    const bundle = parseBundle(published());
+
+    expect(bundle.conformal).not.toBeNull();
+    expect(bundle.conformal?.keys).toEqual(targetKeys);
+    expect(bundle.conformal?.offsets).toHaveLength(targetKeys.length);
+  });
+
+  it("are null for a model that shipped without them", () => {
+    const raw = published();
+    raw.conformal = null;
+    expect(parseBundle(raw).conformal).toBeNull();
+  });
+
+  it("refuse keys and offsets of different lengths", () => {
+    // Zipping mismatched lists would widen the wrong target, and an interval widened by
+    // another quantity's miss is worse than one never widened at all.
+    const raw = published();
+    raw.conformal.offsets = raw.conformal.offsets.slice(1);
+    expect(() => parseBundle(raw)).toThrow(/keys and/);
+  });
+
+  it("refuse non-numeric offsets", () => {
+    const raw = published();
+    raw.conformal.offsets = ["wide", "wider"];
+    expect(() => parseBundle(raw)).toThrow(/array of numbers/);
+  });
+});
+
+describe("applyConformal", () => {
+  it("widens the bounds and leaves the median alone", async () => {
+    const { applyConformal } = await import("../postprocess");
+    const nutrition = {
+      energy: { low: 200, median: 300, high: 400 },
+      protein: { low: 10, median: 20, high: 30 },
+      fat: { low: 5, median: 10, high: 15 },
+      carbohydrate: { low: 20, median: 30, high: 40 },
+      mass: { low: 100, median: 150, high: 200 },
+    };
+
+    const widened = applyConformal(nutrition, { keys: ["energy"], offsets: [50] });
+
+    expect(widened.energy.low).toBe(150);
+    expect(widened.energy.high).toBe(450);
+    expect(widened.energy.median).toBe(300);
+    // A target with no offset passes through untouched rather than being zeroed.
+    expect(widened.protein).toEqual(nutrition.protein);
+  });
+
+  it("matches offsets by name, not by position", async () => {
+    // Ordering comes from the contract on one side and a JSON file on the other. Zipping
+    // them would widen energy by mass's miss.
+    const { applyConformal } = await import("../postprocess");
+    const nutrition = {
+      energy: { low: 200, median: 300, high: 400 },
+      protein: { low: 10, median: 20, high: 30 },
+      fat: { low: 5, median: 10, high: 15 },
+      carbohydrate: { low: 20, median: 30, high: 40 },
+      mass: { low: 100, median: 150, high: 200 },
+    };
+
+    const widened = applyConformal(nutrition, { keys: ["mass", "energy"], offsets: [10, 50] });
+
+    expect(widened.energy.high).toBe(450);
+    expect(widened.mass.high).toBe(210);
+  });
+
+  it("never produces a negative bound", async () => {
+    // A well-calibrated model can yield a negative offset, and a negative quantity of food
+    // is not a thing.
+    const { applyConformal } = await import("../postprocess");
+    const nutrition = {
+      energy: { low: 10, median: 20, high: 30 },
+      protein: { low: 1, median: 2, high: 3 },
+      fat: { low: 1, median: 2, high: 3 },
+      carbohydrate: { low: 1, median: 2, high: 3 },
+      mass: { low: 1, median: 2, high: 3 },
+    };
+
+    const widened = applyConformal(nutrition, { keys: ["energy"], offsets: [100] });
+    expect(widened.energy.low).toBe(0);
   });
 });

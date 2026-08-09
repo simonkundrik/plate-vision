@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def build_bundle(
@@ -28,6 +28,7 @@ def build_bundle(
     provenance: dict[str, Any],
     quantization: dict[str, Any] | None,
     generated_utc: str,
+    conformal: dict[str, Any] | None = None,
     contract_path: str = "shared/model_meta.json",
 ) -> dict[str, Any]:
     """Assemble the manifest.
@@ -47,6 +48,12 @@ def build_bundle(
             "nutrition_quantiles": bool(heads_trained["nutrition_quantiles"]),
         },
         "target_transform": provenance.get("target_transform"),
+        # Without these the intervals under-cover. Measured on the phase B model, raw
+        # coverage was 82.2% against a claimed 90%, and the offsets took it to 90.5%. A
+        # client that cannot apply them is a client reporting a number it does not deliver,
+        # which is why the schema version was raised rather than this being added quietly:
+        # an older client now refuses the bundle instead of silently under-covering.
+        "conformal": conformal,
         "provenance": provenance,
         "quantization": quantization,
     }

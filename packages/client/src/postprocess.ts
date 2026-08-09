@@ -150,3 +150,42 @@ export const averageNutrition = (views: NutritionEstimate[]): NutritionEstimate 
 
   return result;
 };
+
+/**
+ * Widen the outer bounds by the conformal offsets, leaving the median alone.
+ *
+ * The median is a point estimate and conformal prediction says nothing about it. It was
+ * also the one output already well calibrated on this model, at 0.472 against a target of
+ * 0.50, so shifting it would degrade the only part that was right.
+ *
+ * Offsets are matched by target name rather than by position. Ordering here comes from the
+ * contract on one side and a JSON file on the other, and silently zipping them would widen
+ * energy by mass's miss.
+ */
+export const applyConformal = (
+  nutrition: NutritionEstimate,
+  conformal: { keys: string[]; offsets: number[] },
+): NutritionEstimate => {
+  const byKey = new Map(conformal.keys.map((key, index) => [key, conformal.offsets[index]]));
+  const result = {} as NutritionEstimate;
+
+  for (const key of Object.keys(nutrition) as (keyof NutritionEstimate)[]) {
+    const interval = nutrition[key];
+    const offset = byKey.get(key);
+
+    if (offset === undefined) {
+      result[key] = interval;
+      continue;
+    }
+
+    result[key] = {
+      // Clamped at zero: a negative bound is not a quantity of food, and a well-calibrated
+      // model can produce a negative offset that would push a small portion below nothing.
+      low: Math.max(0, interval.low - offset),
+      median: interval.median,
+      high: interval.high + offset,
+    };
+  }
+
+  return result;
+};

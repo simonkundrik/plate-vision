@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "generated_utc": "2026-01-01T00:00:00+00:00",
   "contract": "shared/model_meta.json",
   "artifact": {
@@ -33,6 +33,24 @@
       "carbohydrate",
       "mass"
     ]
+  },
+  "conformal": {
+    "keys": [
+      "energy",
+      "protein",
+      "fat",
+      "carbohydrate",
+      "mass"
+    ],
+    "offsets": [
+      31.7,
+      3.4,
+      4.1,
+      7.1,
+      28.1
+    ],
+    "alpha": 0.1,
+    "calibration_size": 202
   },
   "provenance": {
     "classifier_checkpoint": "runs/kaggle-baseline/runs/baseline/best.pt",
