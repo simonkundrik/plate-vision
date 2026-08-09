@@ -270,8 +270,20 @@ def backbone_matches(backbone: nn.Module, classifier_state: dict) -> bool:
         if other is None or other.shape != value.shape:
             continue
         compared += 1
-        if not torch.equal(other.to(value.dtype), value):
+
+        reference = other.to(value.dtype)
+        if value.is_floating_point():
+            # Tolerant, not exact. Tracking an EMA of frozen weights recomputes each tensor
+            # as decay * w + (1 - decay) * w every step, which is w in exact arithmetic and
+            # a few ulps away in float32. Measured on a frozen 60-epoch run that residue
+            # reached 5.8e-06 relative, against weight changes four orders of magnitude
+            # larger for a backbone that genuinely trained. Comparing with torch.equal
+            # reported a frozen run as fine-tuned.
+            if not torch.allclose(reference, value, rtol=1e-4, atol=1e-6):
+                return False
+        elif not torch.equal(reference, value):
             return False
+
     # No overlap at all means a different architecture, not an untouched backbone.
     return compared > 0
 
