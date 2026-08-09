@@ -187,6 +187,9 @@ def main(argv: list[str] | None = None) -> int:
         "--ingredient-weight",
         type=float,
         default=0.0,
+        # 0.057 puts the ingredient term at about 15% of the pinball loss. Raw BCE against
+        # 133 weighted classes runs roughly 2.6x pinball, so a weight near 1 drowns the task
+        # the model exists to do.
         help="weight on the auxiliary ingredient loss; 0 disables the head entirely",
     )
     recipe.add_argument("--ingredient-min-count", type=int, default=20)
@@ -197,6 +200,10 @@ def main(argv: list[str] | None = None) -> int:
         help="weight on distilling the frozen Food-101 classifier; 0 disables",
     )
     recipe.add_argument("--kd-temperature", type=float, default=4.0)
+    # A note on scale, because the first attempt got this wrong by an order of magnitude:
+    # raw KL against a 101-class teacher runs about 15x the pinball loss, so --kd-weight 0.5
+    # made the regression task 12% of the gradient and calorie error rose from 56.7 to 68.8
+    # kcal. 0.010 puts it near 15%. The trainer prints the balance before the first epoch.
     recipe.add_argument(
         "--zoom-out",
         type=float,
@@ -301,6 +308,11 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(target_transform.to_dict(), indent=2), encoding="utf-8"
     )
 
+    if ingredient_criterion is not None or distiller is not None:
+        report_loss_balance(
+            model, train_loader, criterion, ingredient_criterion, distiller, args, device
+        )
+
     history: list[dict] = []
     best = float("inf")
 
@@ -385,6 +397,59 @@ def main(argv: list[str] | None = None) -> int:
         fit_conformal(args, device, target_transform, calibration_loader)
 
     return 0
+
+
+@torch.no_grad()
+def report_loss_balance(
+    model, loader, criterion, ingredient_criterion, distiller, args, device
+) -> None:
+    """Print what each loss term actually contributes, before training on them.
+
+    Auxiliary weights were guessed on the first attempt and were wrong by an order of
+    magnitude. Raw KL against a 101-class teacher runs about fifteen times the pinball loss,
+    so a weight of 0.5 made the regression task a small minority of the gradient and calorie
+    error rose from 56.7 to 68.8 kcal. Nothing in the loss curve said so, because the total
+    was falling the whole time.
+
+    One batch is enough to see the balance, and seeing it is the difference between choosing
+    a weight and guessing one.
+    """
+    model.train()
+    batch = next(iter(loader))
+    images = batch[0].to(device)
+    targets = batch[1].to(device)
+    ingredient_targets = batch[2].to(device) if len(batch) > 2 else None
+
+    predictions, ingredient_logits, class_logits = model.forward_with_aux(images)
+    terms: list[tuple[str, float, float]] = [
+        ("pinball", float(criterion(predictions, targets)), 1.0)
+    ]
+
+    if ingredient_criterion is not None and ingredient_targets is not None:
+        raw = float(ingredient_criterion(ingredient_logits, ingredient_targets))
+        terms.append(("ingredient", raw, args.ingredient_weight))
+    if distiller is not None and class_logits is not None:
+        raw = float(
+            distillation.kd_loss(
+                class_logits, distiller.teacher_logits(images), distiller.config.temperature
+            )
+        )
+        terms.append(("distillation", raw, args.kd_weight))
+
+    total = sum(raw * weight for _, raw, weight in terms)
+    print()
+    print("loss balance on the first batch")
+    print(f"  {'term':<14}{'raw':>9}{'weight':>9}{'weighted':>10}{'share':>8}")
+    for name, raw, weight in terms:
+        weighted = raw * weight
+        print(f"  {name:<14}{raw:>9.3f}{weight:>9.3f}{weighted:>10.3f}{weighted / total:>7.0%}")
+
+    regression_share = terms[0][1] / total
+    if regression_share < 0.5:
+        print(
+            f"  the regression task is {regression_share:.0%} of the gradient. "
+            "Lower the auxiliary weights unless that is deliberate."
+        )
 
 
 def fit_conformal(args, device, target_transform, loader) -> None:

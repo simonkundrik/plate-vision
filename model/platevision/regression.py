@@ -29,6 +29,8 @@ class RegressionResult:
     loss: float
     seconds: float
     lr: float = 0.0
+    # Total including auxiliary losses, when there are any. Equal to `loss` otherwise.
+    total_loss: float = 0.0
     mae: dict[str, float] = field(default_factory=dict)
     mape: dict[str, float] = field(default_factory=dict)
     coverage: dict[str, float] = field(default_factory=dict)
@@ -39,6 +41,8 @@ class RegressionResult:
 
     def format(self, key: str = "energy") -> str:
         line = f"epoch {self.epoch:>3} {self.split:<5} loss {self.loss:.4f}"
+        if self.total_loss and abs(self.total_loss - self.loss) > 1e-9:
+            line += f" (+aux {self.total_loss:.4f})"
         if key in self.mae:
             line += f"  {key} MAE {self.mae[key]:7.1f}  MAPE {self.mape[key] * 100:5.1f}%"
         if key in self.coverage:
@@ -72,6 +76,11 @@ def train_regression_epoch(
 ) -> RegressionResult:
     model.train()
     loss_meter = AverageMeter()
+    # Tracked separately from the total. With auxiliary heads the total includes losses the
+    # validation split never computes, so comparing the two measures nothing: phase C
+    # reported a train loss of 0.459 against a validation loss of 0.091 and the ratio was
+    # read as a train/validation gap when it was really BCE and KL sitting in one number.
+    pinball_meter = AverageMeter()
     started = time.perf_counter()
     amp_enabled = scaler is not None and scaler.is_enabled()
 
@@ -107,7 +116,8 @@ def train_regression_epoch(
         with torch.amp.autocast(device_type=device.type, enabled=amp_enabled):
             if use_ingredients or use_kd:
                 predictions, ingredient_logits, class_logits = model.forward_with_aux(images)
-                loss = criterion(predictions, targets)
+                pinball = criterion(predictions, targets)
+                loss = pinball
 
                 if use_ingredients:
                     loss = loss + ingredient_weight * ingredient_criterion(
@@ -124,7 +134,8 @@ def train_regression_epoch(
                     )
             else:
                 predictions = model(images)
-                loss = criterion(predictions, targets)
+                pinball = criterion(predictions, targets)
+                loss = pinball
 
         if scaler is not None:
             scaler.scale(loss).backward()
@@ -148,13 +159,20 @@ def train_regression_epoch(
             model_ema.update(model)
 
         loss_meter.update(loss.item(), targets.size(0))
+        pinball_meter.update(pinball.item(), targets.size(0))
         if log_every and step % log_every == 0:
-            print(f"  step {step:>5}  loss {loss_meter.mean:.4f}", flush=True)
+            line = f"  step {step:>5}  loss {loss_meter.mean:.4f}"
+            if pinball_meter.mean != loss_meter.mean:
+                line += f"  (pinball {pinball_meter.mean:.4f})"
+            print(line, flush=True)
 
     return RegressionResult(
         epoch=epoch,
         split="train",
-        loss=loss_meter.mean,
+        # The pinball component, so this is comparable with the validation loss. The total
+        # including auxiliaries is reported alongside rather than in its place.
+        loss=pinball_meter.mean,
+        total_loss=loss_meter.mean,
         seconds=time.perf_counter() - started,
         lr=optimizer.param_groups[0]["lr"],
     )
