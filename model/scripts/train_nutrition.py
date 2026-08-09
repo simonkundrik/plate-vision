@@ -158,6 +158,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument(
+        "--freeze-backbone",
+        action="store_true",
+        # The only configuration that guarantees the classifier rather than defending it.
+        # Held at the stage-one weights, the Food-101 head stays valid by construction, so
+        # no distillation and no linear probe are needed and there is nothing to re-verify.
+        help="hold the backbone at its loaded weights; the nutrition head trains alone",
+    )
+    parser.add_argument(
         "--backbone-lr",
         type=float,
         # Unset by default, so this changes nothing until it is asked for. Measured: at
@@ -302,6 +310,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"distilling the classifier: weight {args.kd_weight}, T {args.kd_temperature}")
 
     criterion = PinballLoss(quantiles).to(device)
+    if args.freeze_backbone:
+        frozen = models.freeze_backbone(model)
+        print(
+            f"backbone frozen: {frozen:,} parameters held at the weights the Food-101 "
+            "head was fitted against, so that head stays exactly as accurate as measured"
+        )
+
     optimizer = torch.optim.AdamW(
         models.parameter_groups(model, args.weight_decay, backbone_lr=args.backbone_lr),
         lr=args.lr,
