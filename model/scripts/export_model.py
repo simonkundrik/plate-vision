@@ -238,8 +238,8 @@ def main(argv: list[str] | None = None) -> int:
     elif nutrition_trained:
         # Loud, because the failure is silent otherwise: the client would present raw
         # quantiles as a 90% interval when they cover about 82%.
-        print("
-  WARNING: no --conformal offsets. The intervals will under-cover.")
+        print()
+        print("  WARNING: no --conformal offsets. The intervals will under-cover.")
 
     manifest = bundle.build_bundle(
         artifact=digest.as_dict(),
