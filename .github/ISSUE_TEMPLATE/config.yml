@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Have an iPhone Pro or iPad Pro? This project needs a depth capture
+    url: https://github.com/simonkundrik/plate-vision/issues?q=is%3Aissue+label%3Adepth-capture
+    about: >-
+      Depth is the largest untried accuracy lever here and it is blocked on hardware and an
+      Apple developer account nobody working on this owns. A single capture, working or
+      failing, is the most useful thing anyone can contribute.
+  - name: How this repository works
+    url: https://github.com/simonkundrik/plate-vision/blob/main/CONTRIBUTING.md
+    about: What to run before opening a pull request, and what gets reported where.

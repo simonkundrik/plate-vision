@@ -46,7 +46,9 @@ feature. The people who can find out are the ones holding the hardware.
 ## Building it
 
 The module is Apple-only, so an Android build is unaffected by everything in this directory.
-Expo Go cannot load a custom native module at all, so it needs a development build:
+Expo Go cannot load a custom native module at all, so it needs a development build, which
+needs an Apple developer account. **Nobody working on this project has one**, which is why
+[CONTRIBUTING.md](../../../CONTRIBUTING.md) asks for exactly that.
 
 ```bash
 EXPO_PUBLIC_ENABLE_DEPTH=1 npx eas build --profile development --platform ios

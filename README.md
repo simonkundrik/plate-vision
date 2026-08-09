@@ -210,9 +210,40 @@ number shown, and a one-tap prefilled issue. It is off unless a build sets
 device. The Swift that talks to the sensor has never been compiled, which is stated on the screen,
 in the module's [README](app/modules/depth-capture/README.md), and in the issue template.
 
-**If you have an iPhone 12 Pro or later, or an iPad Pro from 2020 on, a capture from it is worth
-more to this project than anything else on this page.** A failed capture is as useful as a working
-one.
+### Help wanted: this needs hardware and an account I do not have
+
+Two things stand between the code that is merged and a number that settles the question, and
+neither is code:
+
+1. **An Apple developer account.** The depth lab is a custom native module, so Expo Go cannot load
+   it and it needs a development build. I do not have an account to make one.
+2. **A device with LiDAR.** iPhone 12 Pro or later Pro model, or an iPad Pro from 2020 on. I do not
+   have one of those either.
+
+If you have **both**, you can produce the measurement this project cannot:
+
+```bash
+git clone https://github.com/simonkundrik/plate-vision.git
+cd plate-vision && npm ci
+cd app && EXPO_PUBLIC_ENABLE_DEPTH=1 npx eas build --profile development --platform ios
+```
+
+Install it, open **Depth lab** on the camera screen, point it at a real plate of food, and tap
+through to file the result. The report is about a dozen summary numbers, shown to you in full
+before anything opens. No photo and no depth map are included.
+
+If you have **only the account**, a development build shared with someone who has the hardware is
+just as useful. If you have **only the phone**, say so on the tracking issue and it can be matched
+up.
+
+**A capture that fails is worth as much as one that works**, and so is a build that will not
+compile: the Swift has never been through a compiler, so a build error is a real finding and the
+first one anybody will hit. The distance check is *expected* to come back out of range, for the
+eleven-standard-deviations reason above. That is the predicted result, not a fault in your
+capture, and the app says so next to the number.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), or the tracking issue labelled
+[`depth-capture`](../../issues?q=is%3Aissue+label%3Adepth-capture).
 
 ## Use it in your own app
 
