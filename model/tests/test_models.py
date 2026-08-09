@@ -40,6 +40,58 @@ def test_parameter_groups_cover_every_trainable_parameter():
     assert grouped == models.count_parameters(model)
 
 
+def test_backbone_lr_is_absent_unless_asked_for():
+    """Every caller that does not want discriminative rates must see the groups it always
+    saw, including their order, since two of them unpack the result positionally."""
+    model = models.create_classifier(TINY_BACKBONE, num_classes=5, pretrained=False)
+    groups = models.parameter_groups(model, weight_decay=0.05)
+
+    assert len(groups) == 2
+    assert not any("lr" in group for group in groups)
+
+
+def test_backbone_gets_its_own_learning_rate():
+    # The lever the auxiliary weights were not. A classifier head co-trained at kd-weight
+    # 0.010 fell to 25.9% top-1 because the optimiser rewrote the backbone at full speed,
+    # and no loss term undoes that as fast as it happens.
+    model = models.NutritionModel(TINY_BACKBONE, num_targets=5, num_quantiles=3, pretrained=False)
+    groups = models.parameter_groups(model, weight_decay=0.05, backbone_lr=1e-5)
+
+    with_lr = [g for g in groups if "lr" in g]
+    without = [g for g in groups if "lr" not in g]
+
+    assert with_lr and without
+    assert all(g["lr"] == 1e-5 for g in with_lr)
+
+
+def test_discriminative_groups_still_cover_every_trainable_parameter():
+    # Splitting on a name prefix is exactly how parameters get silently dropped from the
+    # optimiser, and a dropped group trains at zero without ever raising.
+    model = models.NutritionModel(TINY_BACKBONE, num_targets=5, num_quantiles=3, pretrained=False)
+    groups = models.parameter_groups(model, weight_decay=0.05, backbone_lr=1e-5)
+
+    grouped = sum(p.numel() for g in groups for p in g["params"])
+    assert grouped == models.count_parameters(model)
+
+
+def test_the_head_is_not_slowed_with_the_backbone():
+    model = models.NutritionModel(TINY_BACKBONE, num_targets=5, num_quantiles=3, pretrained=False)
+    groups = models.parameter_groups(model, weight_decay=0.05, backbone_lr=1e-5)
+
+    head_params = {id(p) for p in model.head.parameters()}
+    slowed = {id(p) for g in groups if "lr" in g for p in g["params"]}
+    assert not (head_params & slowed)
+
+
+def test_weight_decay_still_skips_norms_under_discriminative_rates():
+    model = models.NutritionModel(TINY_BACKBONE, num_targets=5, num_quantiles=3, pretrained=False)
+    groups = models.parameter_groups(model, weight_decay=0.05, backbone_lr=1e-5)
+
+    for group in groups:
+        expected = 0.0 if all(p.ndim <= 1 for p in group["params"]) else 0.05
+        assert group["weight_decay"] == expected
+
+
 def test_frozen_parameters_are_skipped():
     model = nn.Sequential(nn.Linear(4, 4), nn.Linear(4, 2))
     model[0].weight.requires_grad_(False)
