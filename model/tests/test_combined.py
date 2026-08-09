@@ -120,3 +120,75 @@ def test_combined_model_exports_and_matches_pytorch(tmp_path):
         assert result.within_tolerance, (
             f"{result.output_name} differs by {result.max_absolute_difference}"
         )
+
+
+def build_dual(num_classes=101):
+    """Two backbones, deliberately given different weights so a shared one is detectable."""
+    import timm
+
+    classifier_backbone = timm.create_model(TINY, pretrained=False, num_classes=0)
+    nutrition_backbone = timm.create_model(TINY, pretrained=False, num_classes=0)
+    with torch.no_grad():
+        for param in nutrition_backbone.parameters():
+            param.add_(0.05)
+
+    feature_dim = classifier_backbone(torch.zeros(1, 3, 224, 224)).shape[1]
+    targets, quantiles = len(meta.target_keys()), len(meta.quantiles())
+    return models.CombinedModel(
+        classifier_backbone,
+        nn.Linear(feature_dim, num_classes),
+        nn.Linear(feature_dim, targets * quantiles),
+        num_targets=targets,
+        num_quantiles=quantiles,
+        nutrition_backbone=nutrition_backbone,
+    )
+
+
+class TestDualBackbone:
+    """Seven runs measured a monotonic trade between the two jobs on one backbone. Giving
+    each head the weights it was fitted against is the only configuration where neither is
+    compromised, and it costs a second forward pass."""
+
+    def test_output_shapes_are_unchanged(self):
+        model = build_dual().eval()
+        logits, nutrition = model(torch.zeros(2, 3, 224, 224))
+
+        declared = meta.load_meta()["outputs"]
+        assert list(logits.shape[1:]) == declared["logits"]["shape"][1:]
+        assert list(nutrition.shape[1:]) == declared["nutrition_quantiles"]["shape"][1:]
+
+    def test_the_nutrition_head_does_not_read_the_classifier_features(self):
+        # The failure this guards: reusing the classifier's features silently rebuilds the
+        # shared-backbone model, and the outputs look entirely reasonable.
+        model = build_dual().eval()
+        x = torch.randn(2, 3, 224, 224)
+
+        with torch.no_grad():
+            shared_features = model.backbone(x)
+            from_shared = model.nutrition_head(shared_features)
+            _, actual = model(x)
+
+        assert not torch.allclose(
+            actual.flatten(1), from_shared.view(actual.shape).flatten(1), atol=1e-5
+        )
+
+    def test_sharing_is_still_the_default(self):
+        model = build()
+        assert model.shares_backbone
+        assert model.nutrition_backbone is None
+
+    def test_a_shared_model_keeps_its_state_dict_keys(self):
+        # Published artifacts and every existing checkpoint use these keys. A key that only
+        # appears in the dual case must not appear in the shared one.
+        keys = set(build().state_dict())
+        assert not any(k.startswith("nutrition_backbone.") for k in keys)
+
+    def test_a_dual_model_carries_both_backbones_in_its_checkpoint(self, tmp_path):
+        model = build_dual()
+        path = tmp_path / "dual.pt"
+        checkpoint.save_checkpoint(path, model=model, epoch=0, backbone=TINY)
+        saved = checkpoint.load_checkpoint(path)["model"]
+
+        assert any(k.startswith("backbone.") for k in saved)
+        assert any(k.startswith("nutrition_backbone.") for k in saved)
+        assert checkpoint.load_checkpoint(path)["num_classes"] == 101

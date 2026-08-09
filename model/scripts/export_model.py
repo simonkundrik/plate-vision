@@ -90,12 +90,51 @@ def load_combined(combined_path: Path) -> tuple[nn.Module, dict, bool]:
 
 
 def build_combined(
-    classifier_path: Path, nutrition_path: Path | None
+    classifier_path: Path, nutrition_path: Path | None, dual: bool = False
 ) -> tuple[nn.Module, dict, bool]:
-    """Assemble the two-head model. Returns (model, provenance, nutrition_trained)."""
+    """Assemble the two-head model. Returns (model, provenance, nutrition_trained).
+
+    ``dual`` gives each head the backbone it was fitted against instead of sharing one. That
+    is the only configuration measured here where neither head is compromised: seven runs on
+    a shared backbone traded classifier accuracy against calorie error monotonically, and
+    none escaped it. The cost is roughly double the artifact and a second forward pass.
+    """
     targets, quantiles = len(meta.target_keys()), len(meta.quantiles())
 
     classifier, payload = checkpoint.restore_classifier(classifier_path)
+
+    if dual:
+        if nutrition_path is None:
+            raise SystemExit("--dual-backbone needs a --nutrition checkpoint to carry")
+
+        nutrition_model, transform, _ = checkpoint.restore_nutrition_model(nutrition_path)
+        classifier_backbone = _classifier_backbone(classifier, checkpoint.backbone_of(payload))
+
+        model = models.CombinedModel(
+            classifier_backbone,
+            _extract_head(classifier, nutrition_model.feature_dim),
+            nutrition_model.head,
+            num_targets=targets,
+            num_quantiles=quantiles,
+            nutrition_backbone=nutrition_model.backbone,
+        ).eval()
+
+        print("dual backbone: each head keeps the weights it was fitted against")
+        print(f"  classifier {checkpoint.backbone_of(payload)} from {classifier_path}")
+        print(f"  nutrition  {checkpoint.backbone_of(payload)} from {nutrition_path}")
+
+        return (
+            model,
+            {
+                "classifier_checkpoint": str(classifier_path),
+                "classifier_backbone": checkpoint.backbone_of(payload),
+                "classifier_metric": payload.get("best_metric"),
+                "nutrition_source": str(nutrition_path),
+                "target_transform": transform.to_dict(),
+                "backbones": "separate",
+            },
+            True,
+        )
 
     if nutrition_path is not None:
         # Both heads sit on the nutrition run's backbone. Whether the classifier head is
@@ -164,6 +203,33 @@ def build_combined(
     return model, provenance, nutrition_trained
 
 
+def _classifier_backbone(classifier: nn.Module, backbone_name: str) -> nn.Module:
+    """The classifier's feature extractor, as a standalone module.
+
+    Rebuilt with ``num_classes=0`` so timm returns pooled features, then loaded from the
+    classifier's own weights. Every tensor has to transfer: a partial load would leave part
+    of the backbone at its random initialisation, and the logits would still look plausible
+    because the head is real.
+    """
+    import timm
+
+    backbone = timm.create_model(backbone_name, pretrained=False, num_classes=0)
+    own = backbone.state_dict()
+    matched = {
+        k: v for k, v in classifier.state_dict().items() if k in own and own[k].shape == v.shape
+    }
+
+    missing = len(own) - len(matched)
+    if missing:
+        raise SystemExit(
+            f"{missing} of {len(own)} backbone tensors did not transfer from the classifier; "
+            "the architectures disagree and part of the backbone would stay random"
+        )
+
+    backbone.load_state_dict(matched, strict=False)
+    return backbone.eval()
+
+
 def _extract_head(classifier: nn.Module, feature_dim: int) -> nn.Linear:
     """Pull the final linear layer out of a timm classifier."""
     for module in reversed(list(classifier.modules())):
@@ -186,6 +252,14 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--classifier", type=Path, help="a stage-one classifier checkpoint")
     parser.add_argument("--nutrition", type=Path, help="omit to export an untrained head")
     parser.add_argument(
+        "--dual-backbone",
+        action="store_true",
+        # The only measured configuration where neither head is compromised. On a shared
+        # backbone, seven runs traded classifier accuracy against calorie error and none
+        # escaped it. Doubles the artifact and adds a second forward pass.
+        help="give each head the backbone it was fitted against instead of sharing one",
+    )
+    parser.add_argument(
         "--conformal",
         type=Path,
         help="conformal.json from the nutrition run; without it the intervals under-cover",
@@ -206,9 +280,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.combined:
         if args.nutrition:
             raise SystemExit("--combined already carries a nutrition head; drop --nutrition")
+        if args.dual_backbone:
+            raise SystemExit("--combined is a single assembled model; --dual-backbone builds one")
         model, provenance, nutrition_trained = load_combined(args.combined)
     else:
-        model, provenance, nutrition_trained = build_combined(args.classifier, args.nutrition)
+        model, provenance, nutrition_trained = build_combined(
+            args.classifier, args.nutrition, dual=args.dual_backbone
+        )
 
     print(
         f"classifier: {provenance['classifier_backbone']} "
