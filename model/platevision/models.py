@@ -202,24 +202,40 @@ def count_parameters(model: nn.Module, *, trainable_only: bool = True) -> int:
     return sum(p.numel() for p in params)
 
 
-def parameter_groups(model: nn.Module, weight_decay: float) -> list[dict]:
+def parameter_groups(
+    model: nn.Module, weight_decay: float, *, backbone_lr: float | None = None
+) -> list[dict]:
     """Split parameters so norms and biases are excluded from weight decay.
 
     Decaying bias and normalisation terms is a small but consistent accuracy loss, and it
     is the kind of default that quietly costs a point without ever looking wrong.
+
+    ``backbone_lr`` gives the backbone its own learning rate, which is the lever the
+    auxiliary-loss weights turned out not to be. Nutrition training fine-tunes the backbone
+    on 2,424 cafeteria dishes and that erases Food-101 semantics: measured, a classifier head
+    co-trained at ``--kd-weight 0.010`` fell to 25.9% top-1, and raising the weight to 0.5 to
+    defend it took calorie error from 54.7 to 68.8 kcal. One knob cannot hold both, because
+    it is asking a loss term to undo damage the optimiser is doing at full speed. Slowing the
+    backbone instead preserves the features rather than fighting for them.
+
+    Left unset the groups are exactly as before, so nothing that does not ask for this has
+    to know it exists.
     """
-    decay, no_decay = [], []
+    groups: dict[tuple[bool, bool], list] = {}
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        if param.ndim <= 1 or name.endswith(".bias"):
-            no_decay.append(param)
-        else:
-            decay.append(param)
-    return [
-        {"params": decay, "weight_decay": weight_decay},
-        {"params": no_decay, "weight_decay": 0.0},
-    ]
+        is_backbone = backbone_lr is not None and name.startswith("backbone.")
+        skip_decay = param.ndim <= 1 or name.endswith(".bias")
+        groups.setdefault((is_backbone, skip_decay), []).append(param)
+
+    built: list[dict] = []
+    for (is_backbone, skip_decay), params in sorted(groups.items()):
+        group = {"params": params, "weight_decay": 0.0 if skip_decay else weight_decay}
+        if is_backbone:
+            group["lr"] = backbone_lr
+        built.append(group)
+    return built
 
 
 def resolve_device(requested: str | None = None) -> torch.device:

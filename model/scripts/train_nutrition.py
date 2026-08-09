@@ -157,6 +157,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument(
+        "--backbone-lr",
+        type=float,
+        # Unset by default, so this changes nothing until it is asked for. Measured: at
+        # --kd-weight 0.010 the co-trained classifier head fell to 25.9% top-1 while calorie
+        # error reached its best 54.7 kcal, and at 0.5 the head held 76.9% while calories
+        # regressed to 68.8. The weight cannot hold both, because it asks a loss term to
+        # repair damage the optimiser is doing at full rate. Slowing the backbone attacks
+        # that directly.
+        help="separate learning rate for the backbone; heads keep --lr",
+    )
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-epochs", type=float, default=2.0)
     parser.add_argument("--drop-rate", type=float, default=0.3)
@@ -291,7 +302,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"distilling the classifier: weight {args.kd_weight}, T {args.kd_temperature}")
 
     criterion = PinballLoss(quantiles).to(device)
-    optimizer = torch.optim.AdamW(models.parameter_groups(model, args.weight_decay), lr=args.lr)
+    optimizer = torch.optim.AdamW(
+        models.parameter_groups(model, args.weight_decay, backbone_lr=args.backbone_lr),
+        lr=args.lr,
+    )
+    if args.backbone_lr is not None:
+        print(f"backbone learning rate {args.backbone_lr:.1e}, heads {args.lr:.1e}")
 
     steps_per_epoch = max(1, len(train_loader))
     scheduler = engine.build_scheduler(
