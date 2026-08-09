@@ -10,6 +10,10 @@ export default defineConfig({
     // exists; barcode lookup makes a network request, so it has to be imported
     // deliberately rather than being reachable from the main import.
     barcode: "src/barcode.ts",
+    // Also its own entry point, for a different reason: the depth route is experimental and
+    // its shape is expected to change once real captures exist. Keeping it off the main
+    // import means the stable API is not carrying an unstable one along with it.
+    depth: "src/depth.ts",
   },
   format: ["esm", "cjs"],
   dts: true,

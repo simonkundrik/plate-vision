@@ -1,0 +1,59 @@
+name: Depth capture report
+description: Results from the experimental depth lab, working or not.
+title: "Depth capture report"
+labels: ["depth-capture"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for running this. Nobody working on this project owns a device with a
+        depth sensor, so every number here is one that could not otherwise be measured.
+
+        **A capture that fails is as useful as one that works**, and a capture whose
+        distance check comes back red is the expected result rather than a bug: the model
+        was trained on a fixed camera about 3.5 m above the food, and you are holding a
+        phone at arm's length. What we are trying to find out is whether the rest of it,
+        the dropout rate and the food relief, survives that difference.
+
+        Please do not attach the photograph. The measurements below are the whole ask.
+
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Model and OS version, for example "iPhone 15 Pro, iOS 18.2".
+      placeholder: iPhone 15 Pro, iOS 18.2
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: >-
+        Filled in for you if you arrived here from the app's report button. Paste it by hand
+        otherwise.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: >-
+        What you pointed it at, and anything that looked wrong. If the capture failed, the
+        error the app showed you.
+      placeholder: |
+        Pointed at a bowl of pasta on a wooden table, phone about 30 cm above it.
+        Capture took roughly a second. Relief read 55 mm, which looks about right.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Before you file this
+      options:
+        - label: This contains no photograph and no personal information.
+          required: true
