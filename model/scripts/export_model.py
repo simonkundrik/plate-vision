@@ -65,6 +65,30 @@ def load_calibration_images(root: Path, count: int, seed: int = 0) -> list[np.nd
     return arrays
 
 
+def load_combined(combined_path: Path) -> tuple[nn.Module, dict, bool]:
+    """Load a two-head model that was already assembled by the linear probe.
+
+    The path for a release with a trained nutrition head. Nutrition training fine-tunes the
+    backbone, so the classifier head from stage one describes features that no longer exist
+    and has to be re-fitted against the final backbone by ``fit_classifier_head.py``. That
+    script writes the assembled model, and this reads it back rather than re-deriving an
+    assembly whose correctness would then depend on the two scripts agreeing.
+    """
+    model, transform, payload = checkpoint.restore_combined_model(combined_path)
+    config = payload.get("config", {})
+
+    provenance = {
+        "combined_checkpoint": str(combined_path),
+        "classifier_backbone": checkpoint.backbone_of(payload),
+        # The linear probe's validation top-1, which is the accuracy this artifact has, not
+        # the accuracy of the stage-one classifier it replaced.
+        "classifier_metric": config.get("linear_probe_top1", payload.get("best_metric")),
+        "nutrition_source": config.get("source_nutrition_checkpoint", str(combined_path)),
+        "target_transform": transform.to_dict(),
+    }
+    return model.eval(), provenance, True
+
+
 def build_combined(
     classifier_path: Path, nutrition_path: Path | None
 ) -> tuple[nn.Module, dict, bool]:
@@ -137,7 +161,13 @@ def _extract_head(classifier: nn.Module, feature_dim: int) -> nn.Linear:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--classifier", required=True, type=Path)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
+        "--combined",
+        type=Path,
+        help="combined.pt from fit_classifier_head.py; the path for a trained nutrition head",
+    )
+    source.add_argument("--classifier", type=Path, help="a stage-one classifier checkpoint")
     parser.add_argument("--nutrition", type=Path, help="omit to export an untrained head")
     parser.add_argument(
         "--conformal",
@@ -157,7 +187,13 @@ def main(argv: list[str] | None = None) -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    model, provenance, nutrition_trained = build_combined(args.classifier, args.nutrition)
+    if args.combined:
+        if args.nutrition:
+            raise SystemExit("--combined already carries a nutrition head; drop --nutrition")
+        model, provenance, nutrition_trained = load_combined(args.combined)
+    else:
+        model, provenance, nutrition_trained = build_combined(args.classifier, args.nutrition)
+
     print(
         f"classifier: {provenance['classifier_backbone']} "
         f"({provenance['classifier_metric']:.2f}% on the Food-101 test split)"
