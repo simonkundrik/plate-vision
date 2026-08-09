@@ -224,6 +224,30 @@ def count_parameters(model: nn.Module, *, trainable_only: bool = True) -> int:
     return sum(p.numel() for p in params)
 
 
+def backbone_matches(backbone: nn.Module, classifier_state: dict) -> bool:
+    """Whether a backbone is bit-identical to the one inside a classifier checkpoint.
+
+    This is the difference between a classifier head that is still valid and one that
+    describes features which no longer exist. Nutrition training normally fine-tunes the
+    backbone, which invalidates the stage-one head and produces confidently wrong logits
+    that nothing about the export reveals. Freezing the backbone leaves it valid.
+
+    Both cases now exist in this project, so the exporter can check which one it has instead
+    of trusting whoever invoked it to remember.
+    """
+    own = backbone.state_dict()
+    compared = 0
+    for key, value in own.items():
+        other = classifier_state.get(key)
+        if other is None or other.shape != value.shape:
+            continue
+        compared += 1
+        if not torch.equal(other.to(value.dtype), value):
+            return False
+    # No overlap at all means a different architecture, not an untouched backbone.
+    return compared > 0
+
+
 def freeze_backbone(model: nn.Module) -> int:
     """Stop the backbone moving at all. Returns the number of parameters frozen.
 

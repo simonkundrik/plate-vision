@@ -97,6 +97,52 @@ def _nutrition():
     return models.NutritionModel(TINY_BACKBONE, num_targets=5, num_quantiles=3, pretrained=False)
 
 
+def test_an_untouched_backbone_matches_its_classifier():
+    classifier = models.create_classifier(TINY_BACKBONE, num_classes=5, pretrained=False)
+    model = _nutrition()
+    models.load_backbone_weights(model, classifier.state_dict())
+
+    assert models.backbone_matches(model.backbone, classifier.state_dict())
+
+
+def test_a_moved_backbone_does_not_match():
+    # The case the exporter has to catch. A stage-one classifier head on a fine-tuned
+    # backbone stays confident while describing features that no longer exist, and every
+    # parity check passes because PyTorch and ONNX agree about the same wrong answer.
+    classifier = models.create_classifier(TINY_BACKBONE, num_classes=5, pretrained=False)
+    model = _nutrition()
+    models.load_backbone_weights(model, classifier.state_dict())
+
+    with torch.no_grad():
+        next(iter(model.backbone.parameters())).add_(0.01)
+
+    assert not models.backbone_matches(model.backbone, classifier.state_dict())
+
+
+def test_a_drifted_running_statistic_counts_as_moved():
+    # Nothing here is a gradient, and the features change anyway. This is the half that
+    # freezing by requires_grad alone would miss.
+    classifier = models.create_classifier(TINY_BACKBONE, num_classes=5, pretrained=False)
+    state = classifier.state_dict()
+    model = _nutrition()
+    models.load_backbone_weights(model, state)
+
+    running = [k for k in model.backbone.state_dict() if "running_mean" in k]
+    if not running:
+        pytest.skip("backbone has no normalisation running statistics")
+    with torch.no_grad():
+        model.backbone.state_dict()[running[0]].add_(0.5)
+
+    assert not models.backbone_matches(model.backbone, state)
+
+
+def test_an_unrelated_architecture_does_not_count_as_untouched():
+    # Zero overlapping tensors must not vacuously pass, which is how "nothing to compare"
+    # becomes "everything matches".
+    model = _nutrition()
+    assert not models.backbone_matches(model.backbone, {"totally.different.key": torch.zeros(3)})
+
+
 def test_freezing_stops_every_backbone_gradient():
     model = _nutrition()
     frozen = models.freeze_backbone(model)
