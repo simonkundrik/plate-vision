@@ -212,29 +212,25 @@ in the module's [README](app/modules/depth-capture/README.md), and in the issue 
 
 ### Help wanted: this needs hardware and an account I do not have
 
-Two things stand between the code that is merged and a number that settles the question, and
-neither is code:
+What stands between the merged code and a number that settles the question is a **device with
+LiDAR**: an iPhone 12 Pro or later Pro model, or an iPad Pro from 2020 on. I do not have one. A
+simulator is no use, since the sensor is the whole point.
 
-1. **An Apple developer account.** The depth lab is a custom native module, so Expo Go cannot load
-   it and it needs a development build. I do not have an account to make one.
-2. **A device with LiDAR.** iPhone 12 Pro or later Pro model, or an iPad Pro from 2020 on. I do not
-   have one of those either.
-
-If you have **both**, you can produce the measurement this project cannot:
+If you have one, there are two ways in, and **the first needs no paid Apple account**. Xcode's
+free provisioning signs a build for your own device with an ordinary Apple ID:
 
 ```bash
 git clone https://github.com/simonkundrik/plate-vision.git
 cd plate-vision && npm ci
-cd app && EXPO_PUBLIC_ENABLE_DEPTH=1 npx eas build --profile development --platform ios
+cd app && EXPO_PUBLIC_ENABLE_DEPTH=1 npx expo run:ios --device
 ```
 
-Install it, open **Depth lab** on the camera screen, point it at a real plate of food, and tap
-through to file the result. The report is about a dozen summary numbers, shown to you in full
-before anything opens. No photo and no depth map are included.
+Without a Mac, EAS builds on Expo's macOS workers instead, which does need a paid developer
+account. Both routes are written out step by step in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-If you have **only the account**, a development build shared with someone who has the hardware is
-just as useful. If you have **only the phone**, say so on the tracking issue and it can be matched
-up.
+Then open **Depth lab** on the camera screen, point it at a real plate of food, and tap through to
+file the result. The report is about a dozen summary numbers, shown to you in full before anything
+opens. No photo and no depth map are included.
 
 **A capture that fails is worth as much as one that works**, and so is a build that will not
 compile: the Swift has never been through a compiler, so a build error is a real finding and the
