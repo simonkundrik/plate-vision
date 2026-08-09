@@ -218,16 +218,66 @@ look like a well-calibrated model rather than a mis-specified experiment.
 - **Food-101**, 101k images, 101 classes, for the classifier.
 - **Nutrition5k**, overhead RGB only, ~3,260 dishes with per-ingredient mass and macros.
 
-Depth is deliberately unused as an input: a phone has no depth sensor, and training on it
-would open a train/inference gap that no tuning closes.
+Depth is unused by the shipped model. The original reasoning was that a phone has no depth
+sensor and training on one would open a train/inference gap no tuning closes. Two things have
+since qualified that: modern iPhone Pro devices do carry LiDAR and the market leader uses it,
+and the published gain is large enough to be worth measuring rather than assumed away. The
+RGB-only path stays the default, because most Android devices still cannot supply a depth map
+and a model that requires one is a model most users cannot run.
+
+## Where this sits against published work and against the market
+
+Nutrition5k's own 2D direct-prediction results, on the dataset this model trains on:
+
+| | MAE | MAPE |
+|---|---|---|
+| paper, RGB only | 70.6 kcal | 26.1% |
+| paper, RGB + depth as a 4th channel | 47.6 kcal | 18.8% |
+| **this model, RGB only** | **54.7 kcal** | 34.3% |
+
+**On MAE this beats the published RGB-only baseline by 22%** and sits between it and the
+RGB-D result, without a depth sensor.
+
+The MAPE gap is an artifact of 31 tiny dishes rather than a deficit. Nutrition5k calories run
+from 2 to 3,943 and the worst single error in the test split is 516% on a **10 kcal** dish.
+Excluding dishes under 20 kcal, 6% of the split, gives **27.2% against the paper's 26.1%**.
+That is parity, and it is why median APE is the headline here. The raw 34.3% should not be
+quoted without saying what produces it.
+
+For market context: SnapCalorie, built by the ex-Google researchers behind Nutrition5k,
+publishes roughly **15% mean error using iPhone LiDAR**, and does not publish a figure for
+devices without it. Their own comparisons put nutrition labels at a legally permitted 20%
+error, dietitians near 40% and unaided users near 53%. A 10% target would beat dedicated
+depth hardware and approach the resolution of the ground truth itself.
 
 ## Limitations
 
-- **Single dish per photo.** Realistic multi-item plates need segmentation and are out of scope.
 - **101 classes.** Anything outside them is named as the nearest match, confidently.
 - **Cafeteria trays, not home cooking.** Nutrition5k is Google cafeteria food on a rig.
 - **No validation on phone photos of real meals.** Ground-truth mass needs a kitchen scale and
   cannot be scraped. Every calorie figure describes the rig.
+
+### One limitation that was stated wrongly
+
+Earlier versions of this document said *"Single dish per photo. Realistic multi-item plates
+need segmentation and are out of scope."* That is true of the **classifier**, which emits one
+Food-101 label. It is false of the **nutrition head**.
+
+Nutrition5k test dishes carry a median of **4 ingredients, mean 7.1, max 31**. 68% have two
+or more and 46% have five or more; "generic food" in the paper's title means exactly this. So
+54.7 kcal MAE and 19.6% median APE are already **mixed-plate** numbers, on plates more complex
+than most home dinners. The claim understated what the model does for as long as it stood.
+
+Stated as accuracy rather than error, on those mixed plates:
+
+| condition | median APE | accuracy |
+|---|---|---|
+| fixed rig | 19.6% | **80.4%** |
+| handheld, simulated at ±1.6x | 23.4% | 76.6% |
+| handheld, simulated at ±2.0x | 28.9% | 71.1% |
+
+The handheld rows are simulations produced by zooming rig photographs, not measurements of a
+phone. That distinction is the reason the weighed-meal set still matters.
 
 ## Licence
 
