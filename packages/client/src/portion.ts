@@ -28,4 +28,7 @@ export const scaleNutrition = (
   fat: scaleInterval(nutrition.fat, factor),
   carbohydrate: scaleInterval(nutrition.carbohydrate, factor),
   mass: scaleInterval(nutrition.mass, factor),
+  // A user correcting the portion does not change where the composition came from. A scaled
+  // barcode estimate is still a barcode estimate, and still more trustworthy than a photo.
+  route: nutrition.route,
 });
