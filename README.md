@@ -180,8 +180,10 @@ Recorded here from the start rather than discovered by a reader:
   direct consequence of this choice.
 - **Domain gap.** Cafeteria trays shot from a fixed overhead rig are not handheld photos of home
   cooking. This is the project's largest technical risk.
-- **Single-dish assumption.** The first version assumes one dish per photo. Realistic multi-item
-  plates need segmentation or detection and are out of scope for now.
+- **Single-dish assumption, for the classifier only.** It emits one Food-101 label, so a plate
+  with several distinct dishes gets the nearest single name. The **nutrition head has no such
+  limit**: Nutrition5k dishes carry a median of 4 ingredients and a mean of 7.1, so every
+  calorie figure here is already a mixed-plate number.
 
 ## Use it in your own app
 
