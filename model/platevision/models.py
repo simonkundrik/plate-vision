@@ -64,12 +64,20 @@ class NutritionModel(nn.Module):
         drop_rate: float = 0.3,
         num_ingredients: int = 0,
         num_classes: int = 0,
+        in_chans: int = 3,
     ) -> None:
         super().__init__()
         import timm
 
         # num_classes=0 makes timm return pooled features instead of logits.
-        self.backbone = timm.create_model(backbone, pretrained=pretrained, num_classes=0)
+        #
+        # in_chans=4 adds a depth channel. timm adapts the stem's pretrained weights rather
+        # than discarding them, which matters: reinitialising the first convolution would
+        # throw away the ImageNet features that make training on 2,424 dishes viable at all.
+        self.in_chans = in_chans
+        self.backbone = timm.create_model(
+            backbone, pretrained=pretrained, num_classes=0, in_chans=in_chans
+        )
 
         # Probed rather than read from backbone.num_features, which is not always the
         # width that comes out. MobileNetV3 reports 576 there but emits 1024, because it
@@ -129,7 +137,10 @@ class NutritionModel(nn.Module):
         was_training = self.backbone.training
         self.backbone.eval()
         height, width = input_size()
-        features = self.backbone(torch.zeros(1, 3, height, width))
+        # self.in_chans, not a hardcoded 3: a four-channel backbone rejects a three-channel
+        # probe, and the failure is a shape error at construction rather than anything that
+        # explains itself.
+        features = self.backbone(torch.zeros(1, self.in_chans, height, width))
         self.backbone.train(was_training)
         return int(features.shape[1])
 
@@ -234,11 +245,42 @@ def load_backbone_weights(
     matched = {}
     for key, value in classifier_state.items():
         prefixed = key if key in own else f"backbone.{key}"
-        if prefixed in own and own[prefixed].shape == value.shape:
+        if prefixed not in own:
+            continue
+
+        target = own[prefixed]
+        if target.shape == value.shape:
             matched[prefixed] = value
+        elif (adapted := _adapt_stem(value, target)) is not None:
+            # The one shape mismatch that is not a disagreement: a four-channel stem being
+            # loaded from three-channel weights. Skipping it silently leaves the first
+            # convolution random while every other layer is pretrained, which presents as a
+            # depth experiment that failed rather than as a backbone that was never loaded.
+            matched[prefixed] = adapted
 
     model.load_state_dict(matched, strict=False)
     return len(matched), len(classifier_state) - len(matched)
+
+
+def _adapt_stem(source: torch.Tensor, target: torch.Tensor) -> torch.Tensor | None:
+    """Widen a 3-channel convolution stem to accept extra channels, or return None.
+
+    The colour filters are kept exactly and each new channel starts as their mean, which is
+    what a greyscale copy of the image would produce. That is a neutral starting point: the
+    channel contributes the same as the average of the ones already there, and training moves
+    it from a working model rather than from noise.
+    """
+    if source.ndim != 4 or target.ndim != 4:
+        return None
+    if source.shape[0] != target.shape[0] or source.shape[2:] != target.shape[2:]:
+        return None
+    if target.shape[1] <= source.shape[1]:
+        return None
+
+    widened = target.clone()
+    widened[:, : source.shape[1]] = source
+    widened[:, source.shape[1] :] = source.mean(dim=1, keepdim=True)
+    return widened
 
 
 def load_classifier_head(model: NutritionModel, classifier_state: dict[str, torch.Tensor]) -> bool:

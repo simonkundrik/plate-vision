@@ -195,6 +195,39 @@ def _load_rgb(path: Path):
         return img.convert("RGB")
 
 
+def _stack_depth(image, rgb_path: Path):
+    """RGB plus the dish's depth map as a fourth channel, as a uint8 tensor.
+
+    Returned as a tensor rather than a PIL image because PIL has no four-channel mode that
+    is not RGBA, and an alpha channel is silently dropped or composited by half the
+    transforms it would then pass through.
+    """
+    import numpy as np
+    import torch
+    from PIL import Image
+
+    from platevision import depth as depth_lib
+
+    depth_path = rgb_path.parent / "depth_raw.png"
+    if not depth_path.is_file():
+        raise FileNotFoundError(
+            f"{depth_path} is missing. Fetch depth with "
+            "`python data/download_nutrition5k.py --depth`, or train without --depth."
+        )
+
+    with Image.open(depth_path) as raw:
+        normalised = depth_lib.normalise_depth(np.asarray(raw))
+
+    rgb = torch.from_numpy(np.asarray(image, dtype=np.uint8)).permute(2, 0, 1)
+    channel = torch.from_numpy((normalised * 255.0).astype(np.uint8)).unsqueeze(0)
+    if channel.shape[-2:] != rgb.shape[-2:]:
+        raise ValueError(
+            f"depth {tuple(channel.shape[-2:])} does not match rgb {tuple(rgb.shape[-2:])} "
+            f"for {rgb_path.parent.name}"
+        )
+    return torch.cat([rgb, channel], dim=0)
+
+
 class Nutrition5kDataset:
     """Overhead RGB frame to nutrition targets.
 
@@ -202,10 +235,20 @@ class Nutrition5kDataset:
     does not require torch.
     """
 
-    def __init__(self, samples, transform=None, target_transform=None, ingredient_vocab=None):
+    def __init__(
+        self,
+        samples,
+        transform=None,
+        target_transform=None,
+        ingredient_vocab=None,
+        with_depth: bool = False,
+    ):
         self.samples = list(samples)
         self.transform = transform
         self.target_transform = target_transform
+        # Appends the depth map as a fourth channel. The published gain on this dataset is
+        # 70.6 to 47.6 kcal MAE, and it is the one input change with evidence behind it.
+        self.with_depth = with_depth
         # When set, each item gains a multi-hot ingredient vector for the auxiliary head.
         # Left unset the dataset behaves exactly as before, so nothing that does not ask
         # for ingredients has to know they exist.
@@ -219,6 +262,13 @@ class Nutrition5kDataset:
 
         sample = self.samples[index]
         image = _load_rgb(sample.image_path)
+
+        if self.with_depth:
+            # Stacked before the transform, not after, so every geometric augmentation moves
+            # the depth map with the pixels it describes. Cropping RGB and leaving depth
+            # untouched would pair each plate with another plate's geometry.
+            image = _stack_depth(image, sample.image_path)
+
         if self.transform is not None:
             image = self.transform(image)
 

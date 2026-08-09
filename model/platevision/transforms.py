@@ -68,7 +68,46 @@ def resolution_schedule(
     return sizes
 
 
-def eval_transform() -> v2.Compose:
+# Measured over 300 random Nutrition5k depth maps after `depth.normalise_depth`. The mean is
+# high and the spread is tiny because the rig never moves: almost every pixel is the table at
+# a constant distance, and the food is a thin band above it. Normalising with the ImageNet
+# std would leave this channel nearly flat, which is the same as not supplying it.
+DEPTH_MEAN = 0.612
+DEPTH_STD = 0.052
+
+
+class RgbOnly(v2.Transform):
+    """Apply a colour transform to the first three channels and leave the rest alone.
+
+    ColorJitter on a four-channel tensor treats depth as colour: brightness and saturation
+    are meaningless for a distance map, and hue rotation mixes it into the red channel. The
+    augmentation would be silently corrupting the one signal the channel exists to carry.
+    """
+
+    def __init__(self, wrapped: v2.Transform) -> None:
+        super().__init__()
+        self.wrapped = wrapped
+
+    def forward(self, *inputs):  # noqa: D102
+        image = inputs[0] if len(inputs) == 1 else inputs
+        if not isinstance(image, torch.Tensor) or image.shape[-3] <= 3:
+            return self.wrapped(image)
+
+        colour, rest = image[..., :3, :, :], image[..., 3:, :, :]
+        return torch.cat([self.wrapped(colour), rest], dim=-3)
+
+
+def _normalization(channels: int) -> tuple[list[float], list[float]]:
+    """Contract mean/std, extended for a depth channel when one is present."""
+    mean, std = meta.normalization()
+    if channels == 3:
+        return mean, std
+    if channels != 4:
+        raise ValueError(f"expected 3 or 4 channels, got {channels}")
+    return [*mean, DEPTH_MEAN], [*std, DEPTH_STD]
+
+
+def eval_transform(channels: int = 3) -> v2.Compose:
     """The exact preprocessing the exported graph performs.
 
     Steps follow ``preprocessing.order`` from the contract: convert to float in the unit
@@ -80,7 +119,7 @@ def eval_transform() -> v2.Compose:
         raise ValueError(f"unsupported preprocessing order {order}")
 
     size, mode, antialias = _resize_spec()
-    mean, std = meta.normalization()
+    mean, std = _normalization(channels)
     return v2.Compose(
         [
             v2.ToImage(),
@@ -165,6 +204,7 @@ def nutrition_train_transform(
     scale: tuple[float, float] = (0.85, 1.0),
     size: int | None = None,
     zoom_out: float = 1.6,
+    channels: int = 3,
 ) -> v2.Compose:
     """Augmentation for Nutrition5k regression.
 
@@ -191,7 +231,7 @@ def nutrition_train_transform(
     ``scripts/measure_scale_dependence.py``. ``zoom_out=1.0`` disables it.
     """
     size, mode, antialias = _resize_spec(size)
-    mean, std = meta.normalization()
+    mean, std = _normalization(channels)
 
     steps: list = [
         v2.ToImage(),
@@ -206,7 +246,11 @@ def nutrition_train_transform(
         v2.RandomHorizontalFlip(),
         v2.RandomPerspective(distortion_scale=0.3, p=0.5),
         v2.RandomRotation(degrees=15, interpolation=mode),
-        v2.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.03),
+        # Wrapped, because brightness and saturation are meaningless for a distance map and
+        # hue rotation would mix it into the red channel. Geometric transforms above are
+        # applied to every channel on purpose: they must move depth with the pixels it
+        # describes, or each plate is paired with another plate's geometry.
+        RgbOnly(v2.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.03)),
         v2.Normalize(mean=mean, std=std),
     ]
     return v2.Compose(steps)
