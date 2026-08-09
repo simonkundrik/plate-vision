@@ -1,8 +1,14 @@
 # Model card: plate-vision
 
-Covers the artifact published as [`model-v0.1.0`](https://github.com/simonkundrik/plate-vision/releases/tag/model-v0.1.0)
-and the nutrition head trained after it. Written to be read before use rather than after a
-disappointment.
+Covers the artifact published as [`model-v0.2.0`](https://github.com/simonkundrik/plate-vision/releases/tag/model-v0.2.0),
+the first release whose nutrition head is trained. Written to be read before use rather than
+after a disappointment.
+
+It carries **two backbones**, one per head, each holding the weights it was fitted against.
+Seven single-backbone runs traded classifier accuracy against calorie error monotonically and
+none escaped it, so the cost is roughly double the file and a second forward pass rather than
+a compromised head. Classification is bit-identical to `model-v0.1.0`: 100% top-1 agreement
+over 512 images, maximum logit difference 0.00e+00.
 
 ## What it is
 
