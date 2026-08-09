@@ -207,8 +207,9 @@ far more than that would make depth a harder problem rather than a rescalable on
 So the app carries a **depth lab**: one capture, measured against the training distribution, every
 number shown, and a one-tap prefilled issue. It is off unless a build sets
 `EXPO_PUBLIC_ENABLE_DEPTH=1`, it changes no calorie estimate, and no photo or depth map leaves the
-device. The Swift that talks to the sensor has never been compiled, which is stated on the screen,
-in the module's [README](app/modules/depth-capture/README.md), and in the issue template.
+device. The Swift that talks to the sensor compiles on every pull request and has never run, which
+is stated on the screen, in the module's [README](app/modules/depth-capture/README.md), and in the
+issue template.
 
 ### Help wanted: this needs hardware and an account I do not have
 

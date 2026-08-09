@@ -6,7 +6,7 @@ name: ios module
 # written on a Windows machine with no Apple hardware attached, so until this job went green
 # the honest description of it was "never compiled", and the first thing asked of any
 # contributor was to find out whether it builds at all. That is a poor use of the one person
-# who turns up with the right hardware.
+# who turns up with the right hardware. It went green, so that sentence is gone from the docs.
 #
 # Building for the simulator needs **no Apple developer account and no device**: code signing
 # is off, and macOS runners are free for public repositories. So this answers the compile

@@ -77,8 +77,9 @@ Typecheck and lint pass, and the app boots and renders under `expo start --web`.
 The result screen has not been seen rendered: the web preview cannot reach it without a
 camera, and the target is Android regardless. That happens on the first device build.
 
-The depth module's Swift has **never been compiled**, and the depth lab screen has never
-been rendered. The pure parts of that path are unit tested: the decoding, the report
+The depth module's Swift **compiles**: the `ios module` workflow builds the app for the
+simulator on every pull request that touches `app/`, and asserts the module was autolinked.
+It has never been run, and the depth lab screen has never been rendered. The pure parts of that path are unit tested: the decoding, the report
 formatting, and the depth statistics themselves, which are additionally checked against the
 Python they mirror through a generated fixture. Everything between those and a device is
 unverified, which is what the issue template is for.

@@ -76,9 +76,10 @@ report so the two cannot differ.
 
 ### Please do report the failures
 
-The Swift in `app/modules/depth-capture/ios/` has **never been compiled**. It was written on a
-Windows machine with no Apple hardware attached, against what the AVFoundation documentation says
-the API does. A build error is a real finding and the likeliest first one.
+The Swift in `app/modules/depth-capture/ios/` **compiles**, as of the `ios module` workflow, but
+it has never run. It was written on a Windows machine with no Apple hardware attached, against
+what the AVFoundation documentation says the API does. Compiling rules out the syntax and the API
+surface and nothing else: a capture session that never delivers a depth map builds perfectly.
 
 The same goes for a capture that returns nothing, or values that look wrong. And the camera
 distance check is *expected* to come back out of range for the reason above. That is the predicted

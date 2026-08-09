@@ -37,7 +37,7 @@ What is genuinely unknown, and what a capture from real hardware settles:
 | `packages/client/src/depth.ts` | Unit tested, and checked against `platevision/depth.py` through a generated fixture |
 | `src/depth/decode.ts` | Unit tested against a hand-built buffer |
 | `src/depth/report.ts` | Unit tested |
-| `ios/DepthCaptureModule.swift` | **Never compiled.** Written on a machine with no Apple hardware |
+| `ios/DepthCaptureModule.swift` | **Compiles** for the simulator on every PR, via the `ios module` workflow. Never run |
 | The screen | Typechecked. Never rendered |
 
 That table is why this ships behind a flag with an issue template attached rather than as a
