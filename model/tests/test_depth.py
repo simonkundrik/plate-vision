@@ -262,3 +262,42 @@ class TestFourChannelWeightTransfer:
         restored, _, _ = checkpoint.restore_nutrition_model(path)
         assert restored.in_chans == 4
         assert restored(torch.zeros(1, 4, 224, 224)).shape == (1, 5, 3)
+
+
+class TestDistillationWithDepth:
+    def test_the_teacher_is_not_handed_a_depth_channel(self):
+        """Phase H died on its first batch here. The teacher is a Food-101 classifier whose
+        stem takes three channels, and distillation feeds it the student's batch, so
+        --depth killed the run with a shape error several frames deep in timm."""
+        import torch
+
+        from platevision import distillation, models
+
+        teacher = models.create_classifier("mobilenetv3_small_100", num_classes=5, pretrained=False)
+        distiller = distillation.Distiller(teacher)
+
+        logits = distiller.teacher_logits(torch.zeros(2, 4, 224, 224))
+        assert logits.shape == (2, 5)
+
+    def test_a_three_channel_batch_is_untouched(self):
+        import torch
+
+        from platevision import distillation, models
+
+        teacher = models.create_classifier("mobilenetv3_small_100", num_classes=5, pretrained=False)
+        distiller = distillation.Distiller(teacher)
+        assert distiller.in_chans == 3
+        assert distiller.teacher_logits(torch.zeros(2, 3, 224, 224)).shape == (2, 5)
+
+    def test_the_channel_count_is_read_off_the_teacher(self):
+        # Assuming three would silently truncate a batch for a teacher that wanted four.
+        from platevision import distillation, models
+
+        teacher = models.NutritionModel(
+            "mobilenetv3_small_100",
+            num_targets=5,
+            num_quantiles=3,
+            pretrained=False,
+            in_chans=4,
+        )
+        assert distillation.Distiller(teacher).in_chans == 4
