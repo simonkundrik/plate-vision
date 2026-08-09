@@ -70,11 +70,20 @@ const round = (value: number) => Math.round(value);
  * appears only when it is flattering is worse than no label at all, because the absence
  * stops meaning anything.
  */
-const ROUTE_NOTE: Record<EvidenceRoute, string> = {
-  barcode: "Read off the packet. The composition is stated, not estimated.",
-  chain_menu: "From the restaurant's published figures.",
-  scale_reference: "Portion size recovered from an object of known size in the photo.",
-  absolute: "Estimated from the photograph alone. Median error is about 19% on the test set.",
+const ROUTE_NOTE: Record<EvidenceRoute, (massIsStated: boolean) => string> = {
+  // Composition and amount are two different claims, and this route only makes the first
+  // one exactly. Saying "the composition is stated" while the grams came from a photograph
+  // is true about the half a reader is least likely to be asking about: the packet says
+  // 539 kcal per 100 g and has no idea how much of it you ate.
+  barcode: (stated) =>
+    stated
+      ? "Composition read off the packet, at the amount you gave. Neither number is a guess."
+      : "Composition read off the packet. The amount is still estimated from the photo, " +
+        "and all of the uncertainty below is that estimate.",
+  chain_menu: () => "From the restaurant's published figures.",
+  scale_reference: () => "Portion size recovered from an object of known size in the photo.",
+  absolute: () =>
+    "Estimated from the photograph alone. Median error is about 19% on the test set.",
 };
 
 const renderNutrition = (nutrition: NutritionEstimate | null, reason: string | null) => {
@@ -118,7 +127,7 @@ const renderNutrition = (nutrition: NutritionEstimate | null, reason: string | n
     <p class="muted">${known ? "from a stated mass" : `most likely ${round(scaled.energy.median)} kcal`}</p>
     <table class="macros">${rows}</table>
     <p class="route"><span class="route-tag">${nutrition.route.replace("_", " ")}</span>
-      ${ROUTE_NOTE[nutrition.route]}</p>`;
+      ${ROUTE_NOTE[nutrition.route](scaled.mass.low === scaled.mass.high)}</p>`;
 };
 
 /** The model's own mass estimate, when it has one, so the barcode route can reuse it. */
