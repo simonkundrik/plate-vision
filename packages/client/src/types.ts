@@ -22,6 +22,16 @@ export type Interval = {
   high: number;
 };
 
+/**
+ * Which evidence produced an estimate.
+ *
+ * Ordered best evidence first, mirroring `ROUTE_PRIORITY` in `platevision/routing.py`, which
+ * is where per-route accuracy is measured. Their error distributions are nothing alike: a
+ * barcode states the composition where the vision model infers it, so an integrator that
+ * cannot tell them apart cannot report either honestly.
+ */
+export type EvidenceRoute = "barcode" | "chain_menu" | "scale_reference" | "absolute";
+
 export type NutritionEstimate = {
   /** Kilocalories. */
   energy: Interval;
@@ -31,6 +41,14 @@ export type NutritionEstimate = {
   carbohydrate: Interval;
   /** Total plate mass in grams. */
   mass: Interval;
+  /**
+   * Where these numbers came from.
+   *
+   * Required rather than optional, so an estimate cannot reach an integrator without stating
+   * its provenance. `absolute` means the photograph alone, which is the least accurate route
+   * and the one every published figure in this project was measured on.
+   */
+  route: EvidenceRoute;
 };
 
 export type Analysis = {

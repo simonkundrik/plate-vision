@@ -178,6 +178,24 @@ describe("nutritionFromProduct", () => {
     expect(nutrition.energy.low).toBeCloseTo(nutrition.energy.high);
   });
 
+  it("labels itself as the barcode route", async () => {
+    // Not the vision model's route, and not measured by the vision model's numbers.
+    const nutrition = nutritionFromProduct(product(), { low: 10, median: 20, high: 40 });
+    expect(nutrition.route).toBe("barcode");
+  });
+
+  it("refuses the vision model's conformal widening", async () => {
+    // The offsets were fitted on held-out Nutrition5k photographs, so they describe the
+    // vision model's miss. Widening a stated composition by them manufactures doubt about a
+    // figure printed on the packet.
+    const { applyConformal } = await import("../postprocess");
+    const nutrition = nutritionFromProduct(product(), { low: 10, median: 20, high: 40 });
+
+    expect(() => applyConformal(nutrition, { keys: ["energy"], offsets: [50] })).toThrow(
+      /calibrated on the absolute route/,
+    );
+  });
+
   it("passes the mass through unchanged", () => {
     const mass = { low: 10, median: 20, high: 40 };
     expect(nutritionFromProduct(product(), mass).mass).toEqual(mass);

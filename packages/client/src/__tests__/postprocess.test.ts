@@ -113,7 +113,14 @@ describe("toNutrition", () => {
 
   it("produces one interval per contract target", () => {
     const nutrition = toNutrition(flat([-1.5, 0, 1.5]), transform, quantiles.length);
-    expect(Object.keys(nutrition).sort()).toEqual([...targetKeys].sort());
+    expect(Object.keys(nutrition).sort()).toEqual([...targetKeys, "route"].sort());
+  });
+
+  it("labels the photograph-only route", () => {
+    // An estimate that reaches an integrator without stating where it came from cannot be
+    // reported honestly, because the routes have error distributions nothing alike.
+    const nutrition = toNutrition(flat([-1.5, 0, 1.5]), transform, quantiles.length);
+    expect(nutrition.route).toBe("absolute");
   });
 
   it("orders low, median, high", () => {

@@ -169,5 +169,9 @@ export const nutritionFromProduct = (
     fat: per(product.fatPer100g),
     carbohydrate: per(product.carbohydratePer100g),
     mass: massGrams,
+    // Labelled, not assumed. This estimate and a vision estimate have error distributions
+    // nothing alike, and quoting one accuracy for both is how a near-exact figure measured
+    // on wrapped products becomes a claim about dinner.
+    route: "barcode",
   };
 };

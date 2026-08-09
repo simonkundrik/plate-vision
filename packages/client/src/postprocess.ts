@@ -97,7 +97,9 @@ export const toNutrition = (
     };
   });
 
-  return result as unknown as NutritionEstimate;
+  // The photograph alone. Every published figure in this project was measured on this route,
+  // and it is the least accurate one available.
+  return { ...result, route: "absolute" } as unknown as NutritionEstimate;
 };
 
 /**
@@ -139,13 +141,22 @@ export const averageNutrition = (views: NutritionEstimate[]): NutritionEstimate 
   if (views.length === 0) throw new Error("cannot average zero views");
   if (views.length === 1) return views[0];
 
-  const keys = Object.keys(views[0]) as (keyof NutritionEstimate)[];
-  const result = {} as NutritionEstimate;
+  // Averaging across routes would produce a number whose provenance nobody could state: half
+  // read off a packet, half inferred from pixels, and the result honestly neither.
+  const route = views[0].route;
+  const disagreeing = views.find((view) => view.route !== route);
+  if (disagreeing) {
+    throw new Error(`cannot average a ${route} estimate with a ${disagreeing.route} one`);
+  }
 
-  for (const key of keys) {
+  const result = { route } as NutritionEstimate;
+
+  // Iterating the contract's target keys rather than the object's own keys, so a
+  // non-interval field like `route` is never mistaken for a quantity to average.
+  for (const key of targetKeys as (keyof NutritionEstimate)[]) {
     const mean = (side: keyof Interval) =>
-      views.reduce((total, view) => total + view[key][side], 0) / views.length;
-    result[key] = { low: mean("low"), median: mean("median"), high: mean("high") };
+      views.reduce((total, view) => total + (view[key] as Interval)[side], 0) / views.length;
+    (result[key] as Interval) = { low: mean("low"), median: mean("median"), high: mean("high") };
   }
 
   return result;
@@ -161,24 +172,35 @@ export const averageNutrition = (views: NutritionEstimate[]): NutritionEstimate 
  * Offsets are matched by target name rather than by position. Ordering here comes from the
  * contract on one side and a JSON file on the other, and silently zipping them would widen
  * energy by mass's miss.
+ *
+ * Refuses any route but `absolute`. The offsets were fitted on held-out Nutrition5k
+ * photographs, so they describe the vision model's miss and nothing else. A barcode estimate
+ * carries its uncertainty entirely in the mass, and widening it by the vision model's error
+ * would manufacture doubt about a figure printed on the packet.
  */
 export const applyConformal = (
   nutrition: NutritionEstimate,
   conformal: { keys: string[]; offsets: number[] },
 ): NutritionEstimate => {
-  const byKey = new Map(conformal.keys.map((key, index) => [key, conformal.offsets[index]]));
-  const result = {} as NutritionEstimate;
+  if (nutrition.route !== "absolute") {
+    throw new Error(
+      `conformal offsets were calibrated on the absolute route, not ${nutrition.route}`,
+    );
+  }
 
-  for (const key of Object.keys(nutrition) as (keyof NutritionEstimate)[]) {
-    const interval = nutrition[key];
+  const byKey = new Map(conformal.keys.map((key, index) => [key, conformal.offsets[index]]));
+  const result = { route: nutrition.route } as NutritionEstimate;
+
+  for (const key of targetKeys as (keyof NutritionEstimate)[]) {
+    const interval = nutrition[key] as Interval;
     const offset = byKey.get(key);
 
     if (offset === undefined) {
-      result[key] = interval;
+      (result[key] as Interval) = interval;
       continue;
     }
 
-    result[key] = {
+    (result[key] as Interval) = {
       // Clamped at zero: a negative bound is not a quantity of food, and a well-calibrated
       // model can produce a negative offset that would push a small portion below nothing.
       low: Math.max(0, interval.low - offset),

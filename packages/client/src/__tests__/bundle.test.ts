@@ -134,6 +134,7 @@ describe("applyConformal", () => {
       fat: { low: 5, median: 10, high: 15 },
       carbohydrate: { low: 20, median: 30, high: 40 },
       mass: { low: 100, median: 150, high: 200 },
+      route: "absolute" as const,
     };
 
     const widened = applyConformal(nutrition, { keys: ["energy"], offsets: [50] });
@@ -155,6 +156,7 @@ describe("applyConformal", () => {
       fat: { low: 5, median: 10, high: 15 },
       carbohydrate: { low: 20, median: 30, high: 40 },
       mass: { low: 100, median: 150, high: 200 },
+      route: "absolute" as const,
     };
 
     const widened = applyConformal(nutrition, { keys: ["mass", "energy"], offsets: [10, 50] });
@@ -173,6 +175,7 @@ describe("applyConformal", () => {
       fat: { low: 1, median: 2, high: 3 },
       carbohydrate: { low: 1, median: 2, high: 3 },
       mass: { low: 1, median: 2, high: 3 },
+      route: "absolute" as const,
     };
 
     const widened = applyConformal(nutrition, { keys: ["energy"], offsets: [100] });

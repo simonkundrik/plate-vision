@@ -136,6 +136,7 @@ describe("averageNutrition", () => {
     fat: { low: 1, median: 2, high: 3 },
     carbohydrate: { low: 1, median: 2, high: 3 },
     mass: { low: 100, median: 150, high: 200 },
+    route: "absolute",
   });
 
   it("averages every bound, not only the median", () => {
@@ -150,8 +151,20 @@ describe("averageNutrition", () => {
   it("covers every target", () => {
     const averaged = averageNutrition([estimate(100), estimate(200)]);
     expect(Object.keys(averaged).sort()).toEqual(
-      ["carbohydrate", "energy", "fat", "mass", "protein"].sort(),
+      ["carbohydrate", "energy", "fat", "mass", "protein", "route"].sort(),
     );
+  });
+
+  it("carries the route through unaveraged", () => {
+    const averaged = averageNutrition([estimate(100), estimate(200)]);
+    expect(averaged.route).toBe("absolute");
+  });
+
+  it("refuses to average across routes", () => {
+    // Half read off a packet and half inferred from pixels averages to a number whose
+    // provenance nobody could state, and provenance is the whole point of the label.
+    const scanned = { ...estimate(100), route: "barcode" as const };
+    expect(() => averageNutrition([estimate(100), scanned])).toThrow(/absolute.*barcode/);
   });
 
   it("a single view passes through", () => {

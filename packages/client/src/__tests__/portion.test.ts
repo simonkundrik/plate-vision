@@ -15,6 +15,7 @@ const estimate = (): NutritionEstimate => ({
   fat: interval(16, 30, 52),
   carbohydrate: interval(48, 71, 104),
   mass: interval(210, 320, 470),
+  route: "absolute",
 });
 
 describe("scaleInterval", () => {
