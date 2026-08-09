@@ -112,16 +112,19 @@ def build(args, device):
         )
         print(f"ingredients: {len(vocabulary)} with >= {args.ingredient_min_count} dishes")
 
+    channels = 4 if args.depth else 3
     train_ds = datasets.Nutrition5kDataset(
         train_samples,
-        transform=transforms.nutrition_train_transform(zoom_out=args.zoom_out),
+        transform=transforms.nutrition_train_transform(zoom_out=args.zoom_out, channels=channels),
         target_transform=target_transform,
         ingredient_vocab=vocabulary or None,
+        with_depth=args.depth,
     )
     val_ds = datasets.Nutrition5kDataset(
         val_samples,
-        transform=transforms.eval_transform(),
+        transform=transforms.eval_transform(channels=channels),
         target_transform=target_transform,
+        with_depth=args.depth,
     )
 
     common = {"num_workers": args.workers, "pin_memory": device.type == "cuda"}
@@ -134,8 +137,9 @@ def build(args, device):
     if calibration_samples:
         calibration_ds = datasets.Nutrition5kDataset(
             calibration_samples,
-            transform=transforms.eval_transform(),
+            transform=transforms.eval_transform(channels=channels),
             target_transform=target_transform,
+            with_depth=args.depth,
         )
         calibration_loader = DataLoader(
             calibration_ds, batch_size=args.batch_size, shuffle=False, **common
@@ -157,6 +161,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument(
+        "--depth",
+        action="store_true",
+        # The published gain on this dataset is 70.6 to 47.6 kcal MAE, a 33% reduction,
+        # and it is what the market leader ships via iPhone LiDAR. Phase A's negative
+        # depth result does not apply: that hand-computed a volume and used it as a
+        # direct mass predictor rather than letting the network read the map.
+        help="feed depth_raw.png as a fourth input channel",
+    )
     parser.add_argument("--food101-root", type=Path, help="the food-101 directory")
     parser.add_argument(
         "--classification-weight",
@@ -270,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         pretrained=args.backbone_from is None,
         drop_rate=args.drop_rate,
         num_ingredients=len(vocabulary),
+        in_chans=4 if args.depth else 3,
         num_classes=(
             len(food101.class_keys()) if args.kd_weight > 0 or args.classification_weight > 0 else 0
         ),

@@ -166,9 +166,26 @@ def restore_nutrition_model(path: Path, *, map_location: str = "cpu"):
         pretrained=False,
         num_ingredients=head_width("ingredient_head"),
         num_classes=head_width("classifier_head"),
+        # Read back off the stem, for the same reason the head widths are: the checkpoint
+        # knows its own shape and rebuilding a three-channel model for a four-channel one
+        # fails as an opaque state dict error at the end of a training run.
+        in_chans=_stem_channels(payload["model"]),
     )
     model.load_state_dict(payload["model"])
     return model, TargetTransform.from_dict(stored), payload
+
+
+def _stem_channels(state: dict[str, Any], default: int = 3) -> int:
+    """Input channel count, read off the first 4-D backbone weight in the state dict.
+
+    The stem is whichever convolution comes first, and its second dimension is the number of
+    channels the model expects. Named differently per architecture (``conv_stem`` for
+    EfficientNet, ``conv1`` elsewhere), so the shape identifies it rather than the name.
+    """
+    for key, value in state.items():
+        if key.startswith("backbone.") and hasattr(value, "ndim") and value.ndim == 4:
+            return int(value.shape[1])
+    return default
 
 
 def restore_combined_model(path: Path, *, map_location: str = "cpu"):
