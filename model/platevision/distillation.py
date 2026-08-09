@@ -67,6 +67,10 @@ class Distiller:
         for param in self.teacher.parameters():
             param.requires_grad_(False)
 
+        # Read off the stem rather than assumed, so a teacher that is not three-channel is
+        # not silently handed a truncated batch.
+        self.in_chans = next((int(p.shape[1]) for p in self.teacher.parameters() if p.ndim == 4), 3)
+
     def to(self, device: torch.device) -> Distiller:
         self.teacher.to(device)
         return self
@@ -79,8 +83,22 @@ class Distiller:
         caching them does not work under random augmentation: the cache would hold the
         teacher's opinion of a crop the student never trains on, and the resulting targets
         are wrong in a way the loss curve does not reveal.
+
+        Extra channels are dropped. The teacher is a Food-101 classifier and its stem takes
+        three, so a depth-augmented batch kills the run on the first step with a shape error
+        several frames deep in timm. Depth is meaningless to it in any case: it was trained
+        to tell carbonara from ramen, not to judge how far away the plate is.
         """
-        return self.teacher(images)
+        return self.teacher(self._colour_only(images))
+
+    def _colour_only(self, images: torch.Tensor) -> torch.Tensor:
+        # Only images have channels. A teacher taking flat feature vectors is a legitimate
+        # thing to distil from, and indexing dimension -3 of a 2-D tensor is an IndexError
+        # rather than a no-op.
+        expected = getattr(self, "in_chans", 3)
+        if images.ndim < 3 or images.shape[-3] == expected:
+            return images
+        return images[..., :expected, :, :]
 
     def combine(
         self,
