@@ -49,8 +49,12 @@ from platevision.targets import TargetTransform
 
 def build(args, device):
     root = Path(args.data_root)
-    train_samples, train_stats = datasets.build_nutrition5k_index(root, "train")
-    val_samples, val_stats = datasets.build_nutrition5k_index(root, "test")
+    train_samples, train_stats = datasets.build_nutrition5k_index(
+        root, "train", require_depth=args.depth
+    )
+    val_samples, val_stats = datasets.build_nutrition5k_index(
+        root, "test", require_depth=args.depth
+    )
 
     # Sampled rather than sliced, for the same reason as the classifier scripts: a prefix
     # of an ordered split is not a representative subset. Nutrition5k is ordered by dish id
@@ -68,6 +72,9 @@ def build(args, device):
         f"{train_stats.nonpositive_calories:,} with non-positive calories"
     )
     print(f"val:   {val_stats.kept:,} kept of {val_stats.listed:,} listed")
+    if args.depth:
+        dropped = train_stats.missing_depth + val_stats.missing_depth
+        print(f"       dropped {dropped:,} dishes with no usable depth map")
 
     # Carved out of the *validation* split, not the training one.
     #
