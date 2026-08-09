@@ -54,20 +54,16 @@ jobs:
       - name: Install
         run: npm ci
 
-      # Where autolinking thinks everything is. On a Windows checkout this resolves every
-      # podspec to an absolute path under the hoisted root node_modules, and on the runner
-      # something resolved onnxruntime-react-native to app/node_modules instead, which does
-      # not exist. Printed rather than guessed at, and non-fatal so the build still runs.
-      - name: What autolinking resolves
+      # The workspace postinstall links hoisted native dependencies into app/node_modules,
+      # because the generated Podfile writes podspec paths relative to app/ while CocoaPods
+      # resolves them relative to app/ios. Asserted rather than assumed: without it pod
+      # install fails naming a package, which reads like a broken dependency rather than a
+      # layout problem, and that is an hour nobody should spend twice.
+      - name: Check the hoisted natives are linked
         working-directory: app
-        continue-on-error: true
         run: |
-          echo "--- expo modules ---"
-          npx expo-modules-autolinking resolve -p ios --json | python3 -c "import json,sys; [print(m['packageName'], m['pods'][0]['podspecDir'] if m['pods'] else '-') for m in json.load(sys.stdin)['modules']]"
-          echo "--- react native modules ---"
-          npx expo-modules-autolinking react-native-config --platform ios --json | python3 -m json.tool
-          echo "--- layout ---"
-          ls -d node_modules/onnxruntime-react-native ../node_modules/onnxruntime-react-native 2>&1 || true
+          ls -l node_modules/onnxruntime-react-native > /dev/null
+          echo "onnxruntime-react-native is reachable from app/node_modules"
 
       # Generates app/ios/ from app.json and the module configs. This is the step that reads
       # modules/depth-capture/expo-module.config.json and decides the module exists at all,
