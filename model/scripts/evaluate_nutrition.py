@@ -128,33 +128,14 @@ def main(argv: list[str] | None = None) -> int:
     model.to(device)
     print(f"checkpoint: {args.checkpoint}  (epoch {payload['epoch']}, {payload['backbone']})")
 
-    # Read what the model expects rather than assuming three channels. A depth-trained
-    # checkpoint restores with a four-channel stem, and feeding it RGB fails inside the first
-    # convolution with a shape error that says nothing about the cause. That is exactly how
-    # the phase H3 Kaggle run died: sixty epochs trained, then evaluation crashed, and the
-    # run was reported as a failure when only its last step had failed.
-    channels = checkpoint.stem_channels(payload["model"])
-    wants_depth = channels == 4
-    print(f"  input channels: {channels}{' (rgb + depth)' if wants_depth else ' (rgb)'}")
-
-    samples, stats = datasets.build_nutrition5k_index(
-        args.data_root, args.split, require_depth=wants_depth
-    )
+    samples, stats = datasets.build_nutrition5k_index(args.data_root, args.split)
     if args.limit:
         samples = samples[: args.limit]
     print(f"{args.split}: {len(samples):,} dishes of {stats.listed:,} listed")
-    if wants_depth and stats.missing_depth:
-        # Stated rather than silently dropped. The split these metrics describe has to be the
-        # split they are compared against, and one dish in Nutrition5k ships a 0-byte depth
-        # map, so this number is expected to be small and non-zero.
-        print(f"  excluded {stats.missing_depth:,} dishes with no depth map")
     dish_ids = [s.dish_id for s in samples]
 
     dataset = datasets.Nutrition5kDataset(
-        samples,
-        transform=transforms.eval_transform(channels=channels),
-        target_transform=target_transform,
-        with_depth=wants_depth,
+        samples, transform=transforms.eval_transform(), target_transform=target_transform
     )
     loader = DataLoader(
         dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers

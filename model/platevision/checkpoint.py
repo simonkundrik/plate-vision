@@ -169,13 +169,13 @@ def restore_nutrition_model(path: Path, *, map_location: str = "cpu"):
         # Read back off the stem, for the same reason the head widths are: the checkpoint
         # knows its own shape and rebuilding a three-channel model for a four-channel one
         # fails as an opaque state dict error at the end of a training run.
-        in_chans=stem_channels(payload["model"]),
+        in_chans=_stem_channels(payload["model"]),
     )
     model.load_state_dict(payload["model"])
     return model, TargetTransform.from_dict(stored), payload
 
 
-def stem_channels(state: dict[str, Any], default: int = 3) -> int:
+def _stem_channels(state: dict[str, Any], default: int = 3) -> int:
     """Input channel count, read off the first 4-D backbone weight in the state dict.
 
     The stem is whichever convolution comes first, and its second dimension is the number of
