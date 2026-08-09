@@ -196,6 +196,37 @@ def test_status_parsing(raw, expected):
     assert kaggle_run.parse_status(raw) == expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('sk21832/run has status "KernelWorkerStatus.RUNNING"', "running"),
+        ('sk21832/run has status "KernelWorkerStatus.COMPLETE"', "complete"),
+        ('sk21832/run has status "KernelWorkerStatus.ERROR"', "error"),
+        ('sk21832/run has status "KernelWorkerStatus.QUEUED"', "queued"),
+        ('sk21832/run has status "KernelWorkerStatus.CANCEL_ACKNOWLEDGED"', "cancelled"),
+    ],
+)
+def test_the_format_the_cli_actually_prints(raw, expected):
+    """Every case above this was an invented wording. None of them is what the CLI emits,
+    which is why the real format went unchecked until a run was watched with it."""
+    assert kaggle_run.parse_status(raw) == expected
+
+
+def test_a_running_kernel_is_not_reported_dead_because_its_slug_says_error():
+    # Substring scanning made the slug part of the verdict. A kernel named for the thing it
+    # investigates would have been unwatchable.
+    raw = 'sk21832/plate-vision-error-analysis has status "KernelWorkerStatus.RUNNING"'
+    assert kaggle_run.parse_status(raw) == "running"
+    assert not kaggle_run.is_terminal(kaggle_run.parse_status(raw))
+
+
+def test_the_quoted_status_wins_over_incidental_words():
+    """What actually happened: a transient API message during a training run parsed as
+    `error`, the watch stopped, and the run was reported failed while it was still going."""
+    raw = 'error fetching page 2\nsk21832/run has status "KernelWorkerStatus.RUNNING"'
+    assert kaggle_run.parse_status(raw) == "running"
+
+
 @pytest.mark.parametrize("status", ["complete", "error", "cancelled"])
 def test_terminal_states_stop_the_poll_loop(status):
     assert kaggle_run.is_terminal(status)

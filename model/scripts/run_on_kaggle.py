@@ -92,6 +92,15 @@ def watch(kernel_id: str, poll_seconds: int) -> str:
         result = kaggle_cli("kernels", "status", kernel_id, check=False)
         combined = result.stdout + result.stderr
 
+        # A failed invocation is not a status. Parsing its stderr treats a dropped
+        # connection as a verdict on the run, and "error" appearing anywhere in an API
+        # message used to end the watch and report a training run as failed while it was
+        # still going. Auth failures are checked first because those never recover.
+        if result.returncode != 0 and not kaggle_run.looks_like_auth_failure(combined):
+            print(f"  [{time.strftime('%H:%M:%S')}] status call failed, retrying")
+            time.sleep(poll_seconds)
+            continue
+
         # Without this the loop polls forever: an auth failure parses as "unknown", which
         # is deliberately non-terminal, so it would wait indefinitely on a call that can
         # never succeed.

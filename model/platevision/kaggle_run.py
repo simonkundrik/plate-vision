@@ -134,12 +134,41 @@ def looks_like_auth_failure(raw: str) -> bool:
     return any(marker in lowered for marker in AUTH_FAILURE_MARKERS)
 
 
+# The token the CLI actually quotes, e.g. `has status "KernelWorkerStatus.RUNNING"`, mapped
+# onto the words this module reports. Kaggle spells cancellation several ways.
+_STATUS_TOKENS = {
+    "complete": "complete",
+    "error": "error",
+    "cancelled": "cancelled",
+    "canceled": "cancelled",
+    "cancelacknowledged": "cancelled",
+    "cancelrequested": "cancelled",
+    "running": "running",
+    "queued": "queued",
+}
+
+_STATUS_FIELD = re.compile(r'status[:\s]+"?([A-Za-z_.]+)"?', re.IGNORECASE)
+
+
 def parse_status(raw: str) -> str:
     """Pull the status word out of ``kaggle kernels status`` output.
 
-    The CLI prints a sentence rather than a machine-readable field, so this is
-    intentionally forgiving about the surrounding wording.
+    Reads the quoted token first, because scanning the whole string for the word "error"
+    reports a healthy run as dead the moment anything incidental contains it. That is not
+    hypothetical: a transient API message during a training run parsed as ``error``, the
+    watch loop stopped, and the run was reported failed while it was still training. A slug
+    containing the word would have done the same thing permanently.
+
+    The loose scan is kept as a fallback for wordings this has not seen, but it runs only
+    when no status field is present at all.
     """
+    match = _STATUS_FIELD.search(raw)
+    if match:
+        # `KernelWorkerStatus.RUNNING` -> `running`
+        token = match.group(1).rsplit(".", 1)[-1].strip().lower().replace("_", "")
+        if token in _STATUS_TOKENS:
+            return _STATUS_TOKENS[token]
+
     lowered = raw.lower()
     for state in ("complete", "error", "cancelled", "running", "queued"):
         if state in lowered:
