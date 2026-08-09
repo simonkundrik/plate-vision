@@ -16,11 +16,13 @@ export { PlateVision } from "./plate-vision";
 export { classCount, contract, labels, labelForIndex, keyForIndex } from "./contract";
 export { artifactOf, parseBundle, SUPPORTED_SCHEMA_VERSIONS } from "./bundle";
 export type { ArtifactDescriptor } from "./bundle";
-export { enforceMonotonic, softmax, topK } from "./postprocess";
+export { averageNutrition, averageProbabilities, enforceMonotonic, softmax, topK } from "./postprocess";
 export { scaleInterval, scaleNutrition } from "./portion";
+export { buildViews, centreCrop, flipHorizontal, DEFAULT_VIEWS } from "./views";
 export { stripAlpha } from "./session";
 export type {
   Analysis,
+  AnalyseOptions,
   DishPrediction,
   Interval,
   LoadOptions,

@@ -1,7 +1,13 @@
 import { quantiles } from "./contract";
-import { toNutrition, topK } from "./postprocess";
+import {
+  averageNutrition,
+  averageProbabilities,
+  toNutrition,
+  topKFromProbabilities,
+} from "./postprocess";
+import { buildViews } from "./views";
 import { createSession, runSession, type OrtLike, type OrtSession } from "./session";
-import type { Analysis, LoadOptions, ModelBundle, RgbImage } from "./types";
+import type { Analysis, AnalyseOptions, LoadOptions, ModelBundle, RgbImage } from "./types";
 
 const DEFAULT_TOP_K = 3;
 
@@ -46,22 +52,44 @@ export class PlateVision {
    * numbers from random weights is the easiest way for an integrator to publish something
    * false without ever noticing.
    */
-  async analyse(image: RgbImage): Promise<Analysis> {
-    const raw = await runSession(this.ort, this.session, image);
-    const dishes = topK(raw.logits, this.topKCount);
+  async analyse(image: RgbImage, options: AnalyseOptions = {}): Promise<Analysis> {
+    const views = buildViews(image, options.views ?? 1);
+
+    // Sequential rather than concurrent. One ONNX session serialises its own calls, so
+    // firing them together buys nothing and makes the reported time meaningless.
+    const outputs = [];
+    let inferenceMs = 0;
+    for (const view of views) {
+      const raw = await runSession(this.ort, this.session, view);
+      outputs.push(raw);
+      inferenceMs += raw.inferenceMs;
+    }
+
+    // Probabilities, not logits. Logits from different views are not on a common scale, so
+    // averaging them weights whichever view happened to be most confident.
+    const dishes = topKFromProbabilities(
+      averageProbabilities(outputs.map((o) => o.logits)),
+      this.topKCount,
+    );
 
     if (!this.bundle.headsTrained.nutritionQuantiles) {
-      return this.withoutNutrition(dishes, raw.inferenceMs, NUTRITION_HEAD_UNTRAINED);
+      return this.withoutNutrition(dishes, inferenceMs, NUTRITION_HEAD_UNTRAINED);
     }
     if (!this.bundle.targetTransform) {
-      return this.withoutNutrition(dishes, raw.inferenceMs, NO_TARGET_TRANSFORM);
+      return this.withoutNutrition(dishes, inferenceMs, NO_TARGET_TRANSFORM);
     }
+
+    // Averaged in real units, after the inverse transform. The model predicts in
+    // standardised log space, and a mean there is a geometric mean of kilocalories, which
+    // is not what "average these estimates" means to anyone reading the number.
+    const transform = this.bundle.targetTransform;
+    const perView = outputs.map((o) => toNutrition(o.nutrition, transform, quantiles.length));
 
     return {
       dishes,
-      nutrition: toNutrition(raw.nutrition, this.bundle.targetTransform, quantiles.length),
+      nutrition: averageNutrition(perView),
       nutritionUnavailableReason: null,
-      inferenceMs: raw.inferenceMs,
+      inferenceMs,
     };
   }
 

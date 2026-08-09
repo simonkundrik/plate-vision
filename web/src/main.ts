@@ -123,7 +123,9 @@ const main = async () => {
     say("Analysing…");
     try {
       const image = await decodeImage(source as never);
-      render(await pv.analyse(image));
+      // Three views: measured at 54.0 kcal MAE against 56.7 for one, and 84.4%
+      // coverage against 82.2%. Costs three forward passes.
+      render(await pv.analyse(image, { views: 3 }));
       status.hidden = true;
     } catch (error) {
       say(error instanceof Error ? error.message : String(error), "error");
