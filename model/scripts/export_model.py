@@ -98,10 +98,26 @@ def build_combined(
     classifier, payload = checkpoint.restore_classifier(classifier_path)
 
     if nutrition_path is not None:
-        # Both heads sit on the nutrition run's backbone, which is the one that was
-        # fine-tuned last. The classifier head must have been re-fitted against it by the
-        # linear probe, or its logits describe features that no longer exist.
+        # Both heads sit on the nutrition run's backbone. Whether the classifier head is
+        # still valid against it depends on whether that backbone moved, and the two cases
+        # are indistinguishable from the outside, so they are distinguished here rather
+        # than left to whoever runs this to remember which kind of run produced the file.
         nutrition_model, transform, _ = checkpoint.restore_nutrition_model(nutrition_path)
+        if models.backbone_matches(nutrition_model.backbone, classifier.state_dict()):
+            print("backbone unchanged from the classifier checkpoint; its head stays valid")
+        else:
+            # Loud, because the failure is silent and specific: the logits stay confident
+            # while describing features that no longer exist, and every parity check still
+            # passes because PyTorch and ONNX agree about the same wrong answer.
+            print()
+            print(
+                "  WARNING: this nutrition run moved the backbone, so a stage-one "
+                "classifier head no longer matches it."
+            )
+            print(
+                "  Pass --combined from fit_classifier_head.py unless this head was "
+                "already re-fitted."
+            )
         backbone = nutrition_model.backbone
         nutrition_head = nutrition_model.head
         feature_dim = nutrition_model.feature_dim
