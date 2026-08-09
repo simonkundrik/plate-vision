@@ -217,6 +217,34 @@ def load_backbone_weights(
     return len(matched), len(classifier_state) - len(matched)
 
 
+def load_classifier_head(model: NutritionModel, classifier_state: dict[str, torch.Tensor]) -> bool:
+    """Start the auxiliary classifier head from the trained one rather than from noise.
+
+    Only useful alongside the backbone it was fitted against, and then it matters: a random
+    101-class head begins at chance and spends the run climbing back to a number the project
+    already has, while the gradient it produces on the way there is pulling the shared
+    backbone somewhere nobody chose.
+
+    Returns whether a head was found. Timm keeps it under ``classifier`` for EfficientNet and
+    ``head``/``fc`` elsewhere, so the shape is what identifies it rather than the name.
+    """
+    head = model.classifier_head
+    if head is None:
+        return False
+
+    for key, value in classifier_state.items():
+        if not key.endswith(".weight") or value.shape != head.weight.shape:
+            continue
+        bias = classifier_state.get(key[: -len(".weight")] + ".bias")
+        if bias is None or bias.shape != head.bias.shape:
+            continue
+        with torch.no_grad():
+            head.weight.copy_(value)
+            head.bias.copy_(bias)
+        return True
+    return False
+
+
 def count_parameters(model: nn.Module, *, trainable_only: bool = True) -> int:
     params = model.parameters()
     if trainable_only:

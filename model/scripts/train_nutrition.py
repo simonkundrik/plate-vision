@@ -157,6 +157,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--food101-root", type=Path, help="the food-101 directory")
+    parser.add_argument(
+        "--classification-weight",
+        type=float,
+        default=0.0,
+        # Real images and real labels, interleaved with the nutrition batches. Distillation
+        # could only ever score the nutrition batch, so the backbone was pulled towards
+        # 2,424 cafeteria trays by every gradient it received and defended by a teacher's
+        # opinion about images it was not being shown.
+        help="weight on a Food-101 cross-entropy term trained alongside; 0 disables",
+    )
+    parser.add_argument(
+        "--limit-classification",
+        type=int,
+        help="use only the first N Food-101 images, for smoke tests",
+    )
     parser.add_argument(
         "--freeze-backbone",
         action="store_true",
@@ -254,7 +270,9 @@ def main(argv: list[str] | None = None) -> int:
         pretrained=args.backbone_from is None,
         drop_rate=args.drop_rate,
         num_ingredients=len(vocabulary),
-        num_classes=len(food101.class_keys()) if args.kd_weight > 0 else 0,
+        num_classes=(
+            len(food101.class_keys()) if args.kd_weight > 0 or args.classification_weight > 0 else 0
+        ),
     )
     if args.backbone_from:
         payload = checkpoint.load_checkpoint(args.backbone_from)
@@ -265,6 +283,11 @@ def main(argv: list[str] | None = None) -> int:
                 "No backbone weights transferred. The checkpoint's architecture does not "
                 f"match --backbone {args.backbone}, so this would silently train from scratch."
             )
+        if model.classifier_head is not None:
+            if models.load_classifier_head(model, payload["model"]):
+                print("classifier head: started from the trained one, not from noise")
+            else:
+                print("classifier head: no match in the checkpoint, starting from noise")
     model.to(device)
     print(f"model:  {models.count_parameters(model):,} trainable parameters")
 
@@ -310,6 +333,38 @@ def main(argv: list[str] | None = None) -> int:
         print(f"distilling the classifier: weight {args.kd_weight}, T {args.kd_temperature}")
 
     criterion = PinballLoss(quantiles).to(device)
+    # Joint training on the classification set, which is what distillation was standing in
+    # for. The teacher only ever scored cafeteria trays, so the backbone saw Food-101 data
+    # exactly never and was defended by an opinion about the wrong distribution.
+    classification_batches = classification_criterion = None
+    if args.classification_weight > 0:
+        if not args.food101_root:
+            raise SystemExit("--classification-weight needs --food101-root to train against")
+        if model.classifier_head is None:
+            raise SystemExit(
+                "--classification-weight needs a classifier head; the model was built "
+                "without one because --kd-weight was 0. Pass --kd-weight 0 is fine, but "
+                "the head has to exist, so this run must request it."
+            )
+
+        food_samples = datasets.build_food101_index(args.food101_root, "train")
+        if args.limit_classification:
+            food_samples = food_samples[: args.limit_classification]
+        food_loader = DataLoader(
+            datasets.Food101Dataset(food_samples, transform=transforms.nutrition_train_transform()),
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=True,
+            num_workers=args.workers,
+            pin_memory=device.type == "cuda",
+        )
+        classification_batches = regression.endless(food_loader)
+        classification_criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+        print(
+            f"joint classification: {len(food_samples):,} Food-101 images, "
+            f"weight {args.classification_weight}"
+        )
+
     if args.freeze_backbone:
         frozen = models.freeze_backbone(model)
         print(
@@ -339,9 +394,24 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(target_transform.to_dict(), indent=2), encoding="utf-8"
     )
 
-    if ingredient_criterion is not None or distiller is not None:
+    # Any auxiliary term at all, not just the two that existed when this was written. A new
+    # term that skips the balance report is exactly how the last one came to be wrong by a
+    # factor of fifteen without anything saying so.
+    if (
+        ingredient_criterion is not None
+        or distiller is not None
+        or classification_criterion is not None
+    ):
         report_loss_balance(
-            model, train_loader, criterion, ingredient_criterion, distiller, args, device
+            model,
+            train_loader,
+            criterion,
+            ingredient_criterion,
+            distiller,
+            args,
+            device,
+            classification_batches=classification_batches,
+            classification_criterion=classification_criterion,
         )
 
     history: list[dict] = []
@@ -366,6 +436,9 @@ def main(argv: list[str] | None = None) -> int:
             ingredient_weight=args.ingredient_weight,
             distiller=distiller,
             kd_weight=args.kd_weight,
+            classification_batches=classification_batches,
+            classification_criterion=classification_criterion,
+            classification_weight=args.classification_weight,
         )
         history.append(train_result.as_dict())
         print(train_result.format(), flush=True)
@@ -432,7 +505,15 @@ def main(argv: list[str] | None = None) -> int:
 
 @torch.no_grad()
 def report_loss_balance(
-    model, loader, criterion, ingredient_criterion, distiller, args, device
+    model,
+    loader,
+    criterion,
+    ingredient_criterion,
+    distiller,
+    args,
+    device,
+    classification_batches=None,
+    classification_criterion=None,
 ) -> None:
     """Print what each loss term actually contributes, before training on them.
 
@@ -466,6 +547,17 @@ def report_loss_balance(
             )
         )
         terms.append(("distillation", raw, args.kd_weight))
+
+    if classification_batches is not None and classification_criterion is not None:
+        # Peeked rather than consumed would be nicer, but the generator is endless and one
+        # batch out of Food-101's 75,750 costs nothing.
+        cls_images, cls_labels = next(classification_batches)
+        raw = float(
+            classification_criterion(
+                model.forward_with_aux(cls_images.to(device))[2], cls_labels.to(device)
+            )
+        )
+        terms.append(("classification", raw, args.classification_weight))
 
     total = sum(raw * weight for _, raw, weight in terms)
     print()
