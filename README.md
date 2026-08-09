@@ -55,7 +55,7 @@ Full detail, including the negative results, is in the [model card](MODEL_CARD.m
 | Food-101 top-5 | | **96.90%** |
 | Top-1 on out-of-distribution photos | | **59.21%** (see caveat below) |
 | Calorie MAE, Nutrition5k test split | competitive with published RGB-only baselines | **56.7 kcal**, 19.4% median APE |
-| Calorie median APE, unknown camera distance | | **30.2%** (see below) |
+| Calorie median APE, unknown camera distance | | **28.9%** (see below) |
 | Calorie MAE, personal weighed-meal set | reported honestly, expected to be worse | not collected |
 | 90% interval coverage | 90% (+/- 3pp) | **82.2% as trained, 90.5% +/- 2.3 conformalised** |
 | Deployable model size | under 10 MB | **16.48 MB fp32.** int8 is 5.24 MB but unusable, see below |
@@ -70,17 +70,22 @@ distance by zooming the test images:
 | Camera distance | Calorie median APE | Interval coverage |
 |---|---|---|
 | Known (the rig) | 19.4% | 82.2% |
-| ±2.0x | **30.2%** | **62.1%** |
+| ±2.0x | **28.9%** | **66.4%** |
 
-**Unknown camera distance costs 10.8 points of calorie error.** This is the closest thing to
+**Unknown camera distance costs 9.5 points of calorie error.** This is the closest thing to
 a deployment number obtainable without weighed photographs.
 
 Zoom-out augmentation was added to close that gap and did not: point accuracy under scale
 uncertainty is unchanged. What it did instead was make the model less confident when the cue
-is missing, lifting coverage at that distortion from 42.9% to 62.1%. Augmentation cannot
+is missing, lifting coverage at that distortion from 38.7% to 66.4%. Augmentation cannot
 supply information the image does not contain.
 
-Reproduce with `model/scripts/measure_scale_dependence.py`.
+A scale reference, detecting a dinner plate of known diameter, would not close it either. The
+model turns out barely to read apparent size: the exponent relating its error to zoom is 0.59
+where volume would be 3, and a *perfect* detector recovers 0.8 of the 9.5 points. That route
+was cancelled on the measurement rather than built. See the [model card](MODEL_CARD.md).
+
+Reproduce with `model/scripts/measure_scale_dependence.py` and `measure_scale_recovery.py`.
 
 ### Baseline run
 

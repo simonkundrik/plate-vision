@@ -234,6 +234,95 @@ class Nutrition5kDataset:
         return image, targets, multi_hot(sample.ingredients, self.ingredient_vocab)
 
 
+class ZoomedDishes:
+    """Nutrition5k with each dish re-framed as if the camera sat at a different distance.
+
+    Nutrition5k is shot from a fixed overhead rig, so apparent size in pixels maps directly
+    to real size and the model can read scale straight off the image. A phone held at an
+    unknown distance destroys that mapping, and zooming the test images is the closest
+    simulation of the loss obtainable without weighed photographs.
+
+    Two details decide whether this measures scale or something else:
+
+    **The crop keeps the source aspect ratio.** Nutrition5k frames are 640x480 and the eval
+    transform squashes them to a square, so a square crop would change the aspect distortion
+    the model was trained under at the same time as the scale. The degradation would then be
+    partly a shape change wearing a scale label.
+
+    **Padding replicates the edge**, for the reason ``transforms.RandomZoomOut`` gives: a flat
+    black border is a cue no camera produces, and a factor below 1 needs pixels from outside
+    the frame.
+
+    Factors are drawn once per dish rather than per epoch, so every zoom level sees the same
+    assignment and comparisons are not confounded by which dish got which factor.
+    """
+
+    def __init__(self, samples, transform=None, target_transform=None, zoom=1.0, seed=0):
+        if zoom < 1.0:
+            raise ValueError(f"zoom is a half-range and must be at least 1.0, got {zoom}")
+
+        import numpy as np
+
+        self.samples = list(samples)
+        self.transform = transform
+        self.target_transform = target_transform
+        rng = np.random.default_rng(seed)
+        self.factors = (
+            rng.uniform(1 / zoom, zoom, size=len(self.samples))
+            if zoom > 1.0
+            else np.ones(len(self.samples))
+        )
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int):
+        import torch
+
+        sample = self.samples[index]
+        image = zoom_image(_load_rgb(sample.image_path), float(self.factors[index]))
+        if self.transform is not None:
+            image = self.transform(image)
+
+        targets = torch.tensor(sample.targets, dtype=torch.float32)
+        if self.target_transform is not None:
+            targets = self.target_transform.forward(targets)
+        return image, targets
+
+
+def zoom_image(image, factor: float):
+    """Re-frame a PIL image as a camera ``factor`` times closer, keeping the aspect ratio.
+
+    Above 1 the frame tightens and the food fills more of it. Below 1 the frame widens past
+    the original photograph, and the pixels that were never captured are filled by
+    replicating the edge.
+    """
+    if factor <= 0:
+        raise ValueError(f"zoom factor must be positive, got {factor}")
+    if factor == 1.0:
+        return image
+
+    import numpy as np
+    from PIL import Image
+
+    width, height = image.size
+    crop_width = max(1, int(round(width / factor)))
+    crop_height = max(1, int(round(height / factor)))
+    left = (width - crop_width) // 2
+    top = (height - crop_height) // 2
+
+    if left >= 0 and top >= 0:
+        return image.crop((left, top, left + crop_width, top + crop_height))
+
+    # Zoomed out past the frame. Pad first so the crop lands inside real pixels, rather than
+    # letting PIL fill the overhang with black.
+    pad_x, pad_y = max(0, -left), max(0, -top)
+    padded = np.pad(np.asarray(image), ((pad_y, pad_y), (pad_x, pad_x), (0, 0)), mode="edge")
+    return Image.fromarray(padded).crop(
+        (left + pad_x, top + pad_y, left + pad_x + crop_width, top + pad_y + crop_height)
+    )
+
+
 class Food101Dataset:
     """Food photo to class index."""
 

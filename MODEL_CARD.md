@@ -84,6 +84,10 @@ Calibration after the recipe: **0.075, 0.472, 0.897** against a target of 0.05, 
 Conformal prediction closes the remainder. Measured across 40 random calibration splits of
 the test set, coverage moves to **90.5% ± 2.3**.
 
+That is a property of the method, not of any file. Offsets have to be refitted for the
+checkpoint being released, with `scripts/fit_conformal.py`, and the numbers a training run
+wrote before the calibration split was corrected do not deliver it. See the negative results.
+
 MAPE is unusable for fat and carbohydrate here, returning 1639% and 9782%, because
 near-zero truths blow up the ratio. Median APE is the statistic to read.
 
@@ -113,22 +117,36 @@ Simulating it by zooming the test images, for both runs:
 | Camera distance | APE, run A | APE, run B | Coverage, run A | Coverage, run B |
 |---|---|---|---|---|
 | Known (the rig) | 18.1% | 19.4% | 64.6% | 82.2% |
-| ±1.3x | 20.6% | 21.8% | 60.1% | 77.3% |
-| ±2.0x | **30.6%** | **30.2%** | 42.9% | **62.1%** |
+| ±1.3x | 19.1% | 21.1% | 59.5% | 78.9% |
+| ±1.6x | 25.5% | 23.4% | 46.6% | 73.3% |
+| ±2.0x | **33.1%** | **28.9%** | 38.7% | **66.4%** |
 
-**Unknown camera distance costs 10.8 points of calorie error even after the recipe**, down
-from 12.5 but not meaningfully.
+**Unknown camera distance costs 9.5 points of calorie error even after the recipe**, down
+from 15.0.
 
-The zoom-out augmentation in run B is worth reading carefully, because it did **not** do what
-it was added to do. Point accuracy under scale uncertainty is unchanged: 30.6% to 30.2% is
-inside the noise. What moved is coverage at the same distortion, 42.9% to 62.1%.
+### These numbers replace an earlier table, which was measuring the wrong thing
 
-Augmentation cannot supply information the image does not contain. Scale genuinely is not
-recoverable from a single RGB photo, so the model is no better at guessing size without the
-cue. What it learned instead was to stop pretending it knows, and to widen its intervals when
-the cue is missing. That is the more useful behaviour, and it is not what was intended.
+The first version of this experiment cropped the 640x480 frames to a **square**. The eval
+transform squashes whatever it is given to 224x224, so a square crop changed the aspect
+distortion the model was trained under at the same moment it changed the scale, and part of
+the reported degradation was a shape change wearing a scale label. Factors below 1 also
+cropped past the frame and let PIL fill the overhang with black, a cue no camera produces.
 
-Coverage at ±2.0x is still 62.1%, far from 90%, so **the intervals still overclaim on
+The crop now preserves the source aspect ratio and pads by replicating the edge, which is the
+convention `RandomZoomOut` already used for the same reason.
+
+**The correction reverses a conclusion.** The old table showed run A at 30.6% and run B at
+30.2% at ±2.0x, and this document concluded that the zoom-out augmentation had failed at what
+it was added to do. Measured without the confound the gap is 33.1% against 28.9%: the
+augmentation improves point accuracy under scale uncertainty by **4.2 points**, and costs 1.3
+points on the rig, which is a coherent robustness trade rather than a null result.
+
+The coverage story survives and is still the larger effect: 38.7% to 66.4% at the same
+distortion. The model learned both to guess size better without the cue and to stop
+pretending it knows. Only the first half was previously visible, and it was visible as
+absent.
+
+Coverage at ±2.0x is still 66.4%, far from 90%, so **the intervals still overclaim on
 phone-like input.**
 
 Reproduce with `scripts/measure_scale_dependence.py`.
@@ -153,9 +171,40 @@ and flat dishes sit near the noise floor. Correlation with mass ranged from 0.28
 across subsets. The planned native depth capture was cancelled on this evidence, before any
 of it was written.
 
+**A scale reference would not recover what unknown camera distance costs.** The route was
+going to detect a dinner plate, whose diameter is known to within a couple of centimetres,
+and use it to convert apparent size into real size. Measuring the ceiling first, as with
+depth, cancelled it.
+
+Fitting `log(predicted / actual) = k · log(zoom)` recovers the exponent that explains the
+model's behaviour under scale change. Volume would be 3, area 2:
+
+| | fitted k | cost of unknown distance | a perfect detector recovers |
+|---|---|---|---|
+| Run A | 0.81 | 15.0 points | 6.6 points |
+| Run B | **0.59** | 9.5 points | **0.8 points** |
+
+**The model barely reads size at all.** Applying the physically correct correction makes
+things far worse rather than better: `k=2` takes run B's calorie APE from 28.9% to 51.5%, and
+`k=3` to 66.9%. A dinner plate is 26 to 28 cm, which is 7% uncertainty before any detection
+error, and past 20% error the correction loses to doing nothing.
+
+The gap between the runs is the useful part. Run B's zoom-out augmentation was added to
+improve point accuracy under scale uncertainty and did not. It turns out to have already
+bought most of what a scale reference could have offered, as a side effect of teaching the
+model not to rely on the cue. There was less left to recover because the augmentation had
+taken it.
+
 **Conformal offsets fitted on held-out training data did nothing.** They came out at ±1.0
 kcal for energy and negative for mass, and moved test coverage from 82.2% to 83.4%. Refitting
-on a slice of the test split gave 90.5%.
+on a slice of the test split gives 92.9% on 253 dishes the offsets never saw.
+
+The second half of this one is worse than the first. The corrected method landed in code, but
+the checkpoint's `conformal.json` on disk still held the old values, and the export that
+carries offsets into the bundle was verified against that file without anyone measuring the
+coverage it produced. A bundle would have shipped labelled 90% and delivered 83.4%.
+`scripts/fit_conformal.py` now refits from a checkpoint, reports coverage on a holdout it did
+not calibrate on, and says so loudly when the result falls short.
 
 The calibration set had been held out of training, which is true and is not the property
 conformal prediction requires: it needs the calibration data to be **exchangeable** with the

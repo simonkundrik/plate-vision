@@ -21,47 +21,13 @@ import json
 import sys
 from pathlib import Path
 
-import numpy as np
 import torch
-from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 from platevision import checkpoint, datasets, meta, regression, transforms
 
 # Roughly the range a handheld phone spans: arm's length down to leaning over the plate.
 DEFAULT_ZOOMS = (1.0, 1.15, 1.3, 1.6, 2.0)
-
-
-class ZoomedDishes(Dataset):
-    """Centre-zooms each image by a fixed random factor before the usual eval transform."""
-
-    def __init__(self, samples, transform, target_transform, zoom: float, seed: int = 0):
-        self.samples = samples
-        self.transform = transform
-        self.target_transform = target_transform
-        # Drawn once per dish rather than per epoch, so every zoom level sees the same
-        # assignment and the comparison is not confounded by which dish got which factor.
-        rng = np.random.default_rng(seed)
-        self.factors = rng.uniform(1 / zoom, zoom, size=len(samples)) if zoom > 1 else None
-
-    def __len__(self) -> int:
-        return len(self.samples)
-
-    def __getitem__(self, index: int):
-        sample = self.samples[index]
-        image = Image.open(sample.image_path).convert("RGB")
-
-        if self.factors is not None:
-            factor = float(self.factors[index])
-            width, height = image.size
-            side = min(width, height) / factor
-            left, top = (width - side) / 2, (height - side) / 2
-            image = image.crop((left, top, left + side, top + side))
-
-        targets = torch.tensor(sample.targets, dtype=torch.float32)
-        if self.target_transform is not None:
-            targets = self.target_transform.forward(targets)
-        return self.transform(image), targets
 
 
 def median_ape(predicted: torch.Tensor, actual: torch.Tensor) -> float:
@@ -70,7 +36,7 @@ def median_ape(predicted: torch.Tensor, actual: torch.Tensor) -> float:
 
 def evaluate(model, samples, transform, target_transform, zoom, device, workers):
     loader = DataLoader(
-        ZoomedDishes(samples, transform, target_transform, zoom),
+        datasets.ZoomedDishes(samples, transform, target_transform, zoom=zoom),
         batch_size=32,
         num_workers=workers,
     )
