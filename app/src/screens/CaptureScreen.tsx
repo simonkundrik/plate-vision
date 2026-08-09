@@ -7,9 +7,18 @@ import { colour, radius, space, type } from "../theme";
 
 type Props = {
   onCaptured: (uri: string) => void;
+  /**
+   * Opens the experimental depth lab.
+   *
+   * Undefined unless the build was made with the flag set, and the control is not rendered
+   * at all in that case. An always-present entry point that reports "not available" would
+   * put an experiment in front of every user of a shipped build, which is the opposite of
+   * what a flag is for.
+   */
+  onOpenDepthLab?: () => void;
 };
 
-export const CaptureScreen = ({ onCaptured }: Props) => {
+export const CaptureScreen = ({ onCaptured, onOpenDepthLab }: Props) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
   const camera = useRef<CameraView>(null);
@@ -54,6 +63,16 @@ export const CaptureScreen = ({ onCaptured }: Props) => {
 
       <View style={[styles.guidance, { paddingTop: insets.top + space(2) }]}>
         <Text style={styles.guidanceText}>Fill the frame with the plate</Text>
+        {onOpenDepthLab && (
+          <Pressable
+            onPress={onOpenDepthLab}
+            accessibilityRole="button"
+            accessibilityLabel="Open the experimental depth lab"
+            style={styles.depthEntry}
+          >
+            <Text style={styles.depthEntryText}>Depth lab (experimental)</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Controls sit above the home indicator rather than under it. Ignoring safe-area
@@ -93,7 +112,15 @@ const styles = StyleSheet.create({
     backgroundColor: colour.accent,
   },
   primaryLabel: { color: colour.background, fontSize: type.body, fontWeight: "600" },
-  guidance: { paddingHorizontal: space(3), alignItems: "center" },
+  guidance: { paddingHorizontal: space(3), alignItems: "center", gap: space(1) },
+  depthEntry: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: space(2),
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  depthEntryText: { color: colour.accent, fontSize: type.label, fontWeight: "600" },
   // A shadow rather than a translucent chip. A chip would be another floating card on a
   // screen whose subject is the camera feed.
   //

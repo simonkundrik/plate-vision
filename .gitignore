@@ -51,6 +51,13 @@ ios/
 *.apk
 *.aab
 
+# ...but a local Expo module keeps its own native source in directories with exactly those
+# names, and the rules above match at any depth. Without these the Swift that talks to the
+# depth sensor is silently absent from the repository and the module compiles into nothing:
+# a native feature that fails only for the people who clone it.
+!app/modules/*/android/
+!app/modules/*/ios/
+
 # Vite
 web/dist/
 web/.vite/

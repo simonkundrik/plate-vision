@@ -38,6 +38,11 @@
       "types": "./dist/barcode.d.ts",
       "import": "./dist/barcode.js",
       "require": "./dist/barcode.cjs"
+    },
+    "./depth": {
+      "types": "./dist/depth.d.ts",
+      "import": "./dist/depth.js",
+      "require": "./dist/depth.cjs"
     }
   },
   "files": [

@@ -3,8 +3,10 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { depthExperimentEnabled } from "./src/config";
 import { analyse, isModelUnavailable } from "./src/inference";
 import { CaptureScreen } from "./src/screens/CaptureScreen";
+import { DepthLabScreen } from "./src/screens/DepthLabScreen";
 import { ProblemScreen } from "./src/screens/ProblemScreen";
 import { ResultScreen } from "./src/screens/ResultScreen";
 import { colour } from "./src/theme";
@@ -14,10 +16,14 @@ type Stage =
   | { name: "capture" }
   | { name: "working" }
   | { name: "result"; analysis: MealAnalysis }
+  | { name: "depthLab" }
   | { name: "problem"; title: string; detail: string };
 
 export default function App() {
   const [stage, setStage] = useState<Stage>({ name: "capture" });
+  // Read once. It is a build-time flag, so re-reading it per render would only make the
+  // depth entry point look like something that can change while the app is open.
+  const [depthEnabled] = useState(depthExperimentEnabled);
 
   const onCaptured = useCallback(async (uri: string) => {
     setStage({ name: "working" });
@@ -41,7 +47,13 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="light" />
       <View style={styles.root}>
-        {stage.name === "capture" && <CaptureScreen onCaptured={onCaptured} />}
+        {stage.name === "capture" && (
+          <CaptureScreen
+            onCaptured={onCaptured}
+            onOpenDepthLab={depthEnabled ? () => setStage({ name: "depthLab" }) : undefined}
+          />
+        )}
+        {stage.name === "depthLab" && <DepthLabScreen onBack={onRetake} />}
         {stage.name === "working" && (
           <View style={styles.centred}>
             <ActivityIndicator color={colour.accent} size="large" />

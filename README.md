@@ -174,16 +174,45 @@ hiding it.
 
 Recorded here from the start rather than discovered by a reader:
 
-- **Depth is ignored.** Nutrition5k ships RGB-D and the original paper shows depth improves accuracy
-  substantially. A phone camera will not have it, so training uses RGB only to keep the train and
-  inference distributions aligned. Results will be worse than the paper's headline numbers as a
-  direct consequence of this choice.
+- **The shipped model ignores depth.** Nutrition5k ships RGB-D and the paper's own result is that
+  feeding depth to the network as a fourth channel takes calorie MAE from 70.6 to 47.6, a 33%
+  reduction. Every published figure here is RGB only, so the gap between them and the paper's
+  headline is a direct consequence of that choice. See the depth experiment below.
 - **Domain gap.** Cafeteria trays shot from a fixed overhead rig are not handheld photos of home
   cooking. This is the project's largest technical risk.
 - **Single-dish assumption, for the classifier only.** It emits one Food-101 label, so a plate
   with several distinct dishes gets the nearest single name. The **nutrition head has no such
   limit**: Nutrition5k dishes carry a median of 4 ingredients and a mean of 7.1, so every
   calorie figure here is already a mixed-plate number.
+
+## The depth experiment, and why it needs someone else's phone
+
+Depth is the largest untried accuracy lever here, and it is what the market leader ships via
+iPhone LiDAR. What blocks it is not a training run. It is that Nutrition5k's depth comes from a
+**fixed overhead rig at about 3.5 m** and a phone is held over a plate at arm's length, and nobody
+working on this project owns a device with a depth sensor to find out whether those are close
+enough to be the same problem.
+
+Part of the answer is already derivable. `platevision/depth.py` normalises against a 6,000 mm
+ceiling, so the rig's 3,562 mm median lands at 0.594 against a training mean of 0.612 with a
+standard deviation of 0.052. A phone at 300 mm normalises to 0.05, roughly **eleven standard
+deviations** outside anything the model has seen. Raw absolute depth from a phone will not
+transfer, and `depth.heightAbove`, which subtracts the camera distance and keeps the shape, is the
+channel that might.
+
+What cannot be derived is whether a phone sees a plate of real food as cleanly as the rig does:
+the rig drops about 16% of its pixels and reaches 39% on its worst frame, and a phone struggling
+far more than that would make depth a harder problem rather than a rescalable one.
+
+So the app carries a **depth lab**: one capture, measured against the training distribution, every
+number shown, and a one-tap prefilled issue. It is off unless a build sets
+`EXPO_PUBLIC_ENABLE_DEPTH=1`, it changes no calorie estimate, and no photo or depth map leaves the
+device. The Swift that talks to the sensor has never been compiled, which is stated on the screen,
+in the module's [README](app/modules/depth-capture/README.md), and in the issue template.
+
+**If you have an iPhone 12 Pro or later, or an iPad Pro from 2020 on, a capture from it is worth
+more to this project than anything else on this page.** A failed capture is as useful as a working
+one.
 
 ## Use it in your own app
 

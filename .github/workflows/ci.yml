@@ -55,6 +55,13 @@ jobs:
       - name: Check the packaged contract is current
         run: python scripts/sync_contract.py --check
 
+      # packages/client/src/depth.ts is a hand-written mirror of platevision/depth.py, so
+      # the app can normalise a depth map the way training did. Checking the fixture here
+      # means an edit to the Python fails on the PR that made it, rather than surfacing as
+      # a model quietly fed inputs it was never trained on.
+      - name: Check the depth fixture is current
+        run: python scripts/emit_depth_fixture.py --check
+
   node:
     # One install for the whole workspace rather than one per directory. The app depends on
     # packages/client through a workspace link, so installing them separately would check

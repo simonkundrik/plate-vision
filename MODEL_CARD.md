@@ -171,7 +171,7 @@ well conditioned. It reported 100% and proved nothing.
 
 **Depth-derived volume did not help.** Integrating an overhead depth map above the table
 plane gives 104.9 g mass MAE against RGB's 71.6 g even after RGB's scale advantage is
-removed. The geometry is sound — implied density lands at a median 0.87 g/cm³ — but plates
+removed. The geometry is sound, implied density lands at a median 0.87 g/cm³, but plates
 and bowls occlude food while adding their own volume, a sixth of pixels are sensor dropouts,
 and flat dishes sit near the noise floor. Correlation with mass ranged from 0.28 to 0.62
 across subsets. The planned native depth capture was cancelled on this evidence, before any
@@ -230,6 +230,21 @@ since qualified that: modern iPhone Pro devices do carry LiDAR and the market le
 and the published gain is large enough to be worth measuring rather than assumed away. The
 RGB-only path stays the default, because most Android devices still cannot supply a depth map
 and a model that requires one is a model most users cannot run.
+
+**Rig depth and phone depth are not obviously the same quantity.** Nutrition5k's maps come
+from a fixed camera at a median 3,562 mm, which `depth.normalise_depth` puts at 0.594 against
+a training mean of 0.612 and a standard deviation of 0.052. A phone held 300 mm above a plate
+normalises to 0.05, about **eleven standard deviations** outside the training range. Any
+four-channel model trained on this dataset and pointed at a phone would be reading an input it
+has never seen, and `depth.height_above`, which removes the camera distance and keeps the
+shape, is the transform that could survive the move.
+
+What remains genuinely unmeasured is whether a phone resolves real food as cleanly as the rig:
+16% of rig pixels are dropouts, 39% on its worst frame, and a phone doing substantially worse
+would make depth a harder problem rather than a rescalable one. The app carries a flagged,
+estimate-free **depth lab** that measures exactly this and files it, because that number needs
+hardware this project does not have. Until captures come back, nothing here claims phone depth
+works.
 
 ## Where this sits against published work and against the market
 
