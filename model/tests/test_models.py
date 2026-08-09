@@ -105,6 +105,29 @@ def test_an_untouched_backbone_matches_its_classifier():
     assert models.backbone_matches(model.backbone, classifier.state_dict())
 
 
+def test_ema_residue_on_frozen_weights_still_matches():
+    """Tracking an EMA of frozen weights recomputes decay*w + (1-decay)*w every step, which
+    is w in exact arithmetic and a few ulps away in float32. Comparing exactly reported a
+    genuinely frozen 60-epoch run as fine-tuned, and the export warned about a head that was
+    perfectly valid."""
+    classifier = models.create_classifier(TINY_BACKBONE, num_classes=5, pretrained=False)
+    state = classifier.state_dict()
+    model = _nutrition()
+    models.load_backbone_weights(model, state)
+
+    with torch.no_grad():
+        for param in model.backbone.parameters():
+            for _ in range(200):
+                param.copy_(0.999 * param + 0.001 * param)
+
+    assert not all(
+        torch.equal(state[k], v)
+        for k, v in model.backbone.state_dict().items()
+        if k in state and state[k].shape == v.shape
+    ), "the fixture did not actually perturb anything"
+    assert models.backbone_matches(model.backbone, state)
+
+
 def test_a_moved_backbone_does_not_match():
     # The case the exporter has to catch. A stage-one classifier head on a fine-tuned
     # backbone stays confident while describing features that no longer exist, and every
