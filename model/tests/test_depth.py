@@ -301,3 +301,50 @@ class TestDistillationWithDepth:
             in_chans=4,
         )
         assert distillation.Distiller(teacher).in_chans == 4
+
+
+class TestDepthAwareIndex:
+    """dish_1564159636 has a 0-byte depth_raw.png upstream. One broken file in 3,262 should
+    cost one dish, not the run: the download exited 1 and the notebook, now that it
+    propagates failures, killed phase H2 on the first cell."""
+
+    def _tree(self, tmp_path, dishes, with_depth):
+        (tmp_path / "metadata").mkdir(parents=True)
+        (tmp_path / "splits").mkdir()
+        rows = []  # the real metadata csv has no header row
+        for dish in dishes:
+            rows.append(f"{dish},100,200,5,10,8")
+            imagery = tmp_path / "imagery" / dish
+            imagery.mkdir(parents=True)
+            (imagery / "rgb.png").write_bytes(b"x")
+            if dish in with_depth:
+                (imagery / "depth_raw.png").write_bytes(b"x")
+        return rows
+
+    def test_a_dish_without_depth_is_dropped_only_when_depth_is_required(self, tmp_path):
+        from platevision import datasets, nutrition5k
+
+        dishes = ["dish_a", "dish_b"]
+        rows = self._tree(tmp_path, dishes, with_depth={"dish_a"})
+        for name in nutrition5k.METADATA_FILES:
+            (tmp_path / "metadata" / name).write_text("\n".join(rows), encoding="utf-8")
+        (tmp_path / "splits" / "rgb_test_ids.txt").write_text("\n".join(dishes), encoding="utf-8")
+        (tmp_path / "splits" / "rgb_train_ids.txt").write_text("", encoding="utf-8")
+
+        without, stats_without = datasets.build_nutrition5k_index(tmp_path, "test")
+        with_req, stats_with = datasets.build_nutrition5k_index(
+            tmp_path, "test", require_depth=True
+        )
+
+        assert len(without) == 2 and stats_without.missing_depth == 0
+        assert len(with_req) == 1 and stats_with.missing_depth == 1
+        assert with_req[0].dish_id == "dish_a"
+
+    def test_the_count_is_reported_rather_than_swallowed(self, tmp_path):
+        # Shrinkage that nobody sees is how a training set quietly loses a third of itself.
+        from platevision import datasets
+
+        stats = datasets.IndexStats(
+            listed=10, missing_metadata=0, missing_image=0, nonpositive_calories=0, kept=9
+        )
+        assert stats.missing_depth == 0  # defaulted, so existing constructions still work
