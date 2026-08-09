@@ -58,6 +58,14 @@ describe("parseBundle rejections", () => {
     expect(() => parseBundle({ ...published(), schema_version: 99 })).toThrow(/not supported/);
   });
 
+  it("accepts the schema version published artifacts still carry", () => {
+    // model-v0.1.0 is schema 2 and the app pins it. Accepting only 3 was a compatibility
+    // break dressed as a safety check.
+    const bundle = parseBundle({ ...published(), schema_version: 2, conformal: undefined });
+    expect(bundle.schemaVersion).toBe(2);
+    expect(bundle.conformal).toBeNull();
+  });
+
   it("refuses a manifest that omits a head", () => {
     const raw = published();
     delete raw.heads_trained.nutrition_quantiles;

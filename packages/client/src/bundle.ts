@@ -18,8 +18,22 @@
 
 import type { ConformalOffsets, ModelBundle, TargetTransform } from "./types";
 
-/** Manifest versions this library understands. */
-export const SUPPORTED_SCHEMA_VERSIONS = [3];
+/**
+ * Manifest versions this library understands.
+ *
+ * Version 3 added the conformal offsets. Version 2 is still accepted because published
+ * artifacts carry it and the app pins one of them: raising the floor to 3 alone broke both
+ * the demo and every installed build against `model-v0.1.0`, which is a compatibility break
+ * rather than a safety check.
+ *
+ * The direction the version guard protects is an **old client meeting a new artifact**,
+ * where ignoring an unknown field would present raw quantiles as calibrated ones. A new
+ * client meeting an old artifact is the safe direction: this code knows version 2 carries no
+ * offsets and declines to widen rather than guessing. What it must not do is present a
+ * trained head's raw intervals as though they were calibrated, and `PlateVision` withholds
+ * nutrition in exactly that case.
+ */
+export const SUPPORTED_SCHEMA_VERSIONS = [2, 3];
 
 type RawTransform = {
   mean?: unknown;

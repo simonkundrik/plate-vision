@@ -15,7 +15,10 @@ const trainedBundle: ModelBundle = {
   schemaVersion: 3,
   headsTrained: { logits: true, nutritionQuantiles: true },
   targetTransform: transform,
-  conformal: null,
+  // A releasable artifact carries these. Without them the raw quantiles cover about 82% of
+  // the truth while the type calls them the 5th and 95th percentile, so the library refuses
+  // to hand them out and a fixture without them is not a model anyone could ship.
+  conformal: { keys: [...targetKeys], offsets: targetKeys.map(() => 5), alpha: 0.1 },
 };
 
 /**
@@ -116,6 +119,42 @@ describe("PlateVision", () => {
 
     expect(result.nutrition).toBeNull();
     expect(result.nutritionUnavailableReason).toMatch(/untrained/i);
+    expect(result.dishes.length).toBeGreaterThan(0);
+  });
+
+  it("withholds nutrition when a trained head shipped without conformal offsets", async () => {
+    // The case that made schema 2 unsafe to accept blindly. Raw quantiles from this model
+    // cover about 82% while being labelled 90%, and there is no way to present that
+    // honestly, so it is withheld exactly as an untrained head is.
+    const { ort } = fakeOrt();
+    const pv = await PlateVision.load(ort, {
+      model: "m",
+      bundle: { ...trainedBundle, conformal: null },
+    });
+
+    const result = await pv.analyse(image());
+
+    expect(result.nutrition).toBeNull();
+    expect(result.nutritionUnavailableReason).toMatch(/conformal/i);
+    expect(result.dishes.length).toBeGreaterThan(0);
+  });
+
+  it("loads a schema 2 bundle, which published artifacts still carry", async () => {
+    // Raising the floor to 3 alone broke the demo and every installed build against
+    // model-v0.1.0. A new client meeting an old artifact is the safe direction: it knows
+    // version 2 carries no offsets rather than having to guess.
+    const { ort } = fakeOrt();
+    const pv = await PlateVision.load(ort, {
+      model: "m",
+      bundle: {
+        ...trainedBundle,
+        schemaVersion: 2,
+        headsTrained: { logits: true, nutritionQuantiles: false },
+        conformal: null,
+      },
+    });
+
+    const result = await pv.analyse(image());
     expect(result.dishes.length).toBeGreaterThan(0);
   });
 
