@@ -39,5 +39,12 @@
     "test": "vitest run",
     "build:android": "eas build --profile development --platform android"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "searchPaths": [
+        "../node_modules"
+      ]
+    }
+  }
 }

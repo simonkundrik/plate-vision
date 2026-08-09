@@ -16,12 +16,21 @@
 // contributor running `npx expo run:ios` from `app/` on a Mac would have hit exactly this,
 // which is most of the value of having that job at all.
 
+// `root` alone was not enough: the podspec path is computed separately, so it is given
+// outright. Absolute, because the whole failure was a relative path resolved from the wrong
+// base.
+
 const path = require("path");
 
-const rootOf = (name) => path.dirname(require.resolve(`${name}/package.json`));
+const root = path.dirname(require.resolve("onnxruntime-react-native/package.json"));
 
 module.exports = {
   dependencies: {
-    "onnxruntime-react-native": { root: rootOf("onnxruntime-react-native") },
+    "onnxruntime-react-native": {
+      root,
+      platforms: {
+        ios: { podspecPath: path.join(root, "onnxruntime-react-native.podspec") },
+      },
+    },
   },
 };
