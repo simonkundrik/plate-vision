@@ -100,6 +100,28 @@ class NutritionModel(nn.Module):
         self.num_classes = num_classes
         self.classifier_head = nn.Linear(self.feature_dim, num_classes) if num_classes else None
 
+        # Set by freeze_backbone(). Declared here so `train()` can read it before anything
+        # has frozen anything, and so it travels in the state dict's buffers-free metadata
+        # rather than being an attribute that only sometimes exists.
+        self.backbone_frozen = False
+
+    def train(self, mode: bool = True):
+        """Keep a frozen backbone in eval mode through every ``model.train()`` call.
+
+        Setting ``requires_grad = False`` stops the weights moving and does nothing about
+        BatchNorm running statistics, which keep updating from cafeteria trays in train mode
+        and drift the features anyway. Freezing that way looks frozen and is not, and the
+        classifier head that depends on those exact features would degrade for reasons no
+        gradient explains.
+
+        Overriding here rather than calling ``backbone.eval()`` in the training loop, because
+        the loop calls ``model.train()`` once per epoch and would silently undo it.
+        """
+        super().train(mode)
+        if self.backbone_frozen:
+            self.backbone.eval()
+        return self
+
     @torch.no_grad()
     def _probe_feature_dim(self) -> int:
         from platevision.meta import input_size
@@ -200,6 +222,34 @@ def count_parameters(model: nn.Module, *, trainable_only: bool = True) -> int:
     if trainable_only:
         params = (p for p in model.parameters() if p.requires_grad)
     return sum(p.numel() for p in params)
+
+
+def freeze_backbone(model: nn.Module) -> int:
+    """Stop the backbone moving at all. Returns the number of parameters frozen.
+
+    The point of this is what it guarantees rather than what it saves. With the backbone
+    held at the weights the Food-101 classifier was fitted against, that classifier head
+    stays exactly as accurate as it was measured to be: no distillation defending it, no
+    linear probe re-fitting it, nothing to verify afterwards. Four runs that fine-tuned the
+    backbone produced classifiers at 76.9%, 74.7%, 64.3% and 25.9% against a baseline of
+    85.9%, and none of the levers that were supposed to protect it reached 80%.
+
+    What it costs is unknown until measured: the nutrition head has to read features chosen
+    for telling pizza from ramen, not for judging how much of it is on the plate.
+    """
+    if not hasattr(model, "backbone"):
+        raise TypeError(f"{type(model).__name__} has no backbone to freeze")
+
+    frozen = 0
+    for param in model.backbone.parameters():
+        param.requires_grad = False
+        frozen += param.numel()
+
+    # Read by NutritionModel.train(), which is what keeps BatchNorm's running statistics
+    # from drifting even though no gradient reaches the weights.
+    model.backbone_frozen = True
+    model.backbone.eval()
+    return frozen
 
 
 def parameter_groups(
