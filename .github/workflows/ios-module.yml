@@ -73,16 +73,20 @@ jobs:
         working-directory: app
         run: npx expo prebuild --platform ios --clean
 
-      # The generated project name follows the app slug through Expo's own sanitising, so it
-      # is discovered rather than hardcoded. Pods schemes are skipped: they build the
-      # dependencies, not the app that contains this module.
+      # The generated project name follows the app slug through Expo's own sanitising, so
+      # it is discovered rather than hardcoded. The app scheme is the one wanted: a first
+      # attempt took the first non-Pods scheme and got `DepthCapture`, the module's own pod,
+      # which builds the Swift but not the app that has to host it.
       - name: Find the workspace and scheme
         id: xcode
         working-directory: app
         run: |
           workspace=$(ls -d ios/*.xcworkspace | head -1)
-          scheme=$(xcodebuild -workspace "$workspace" -list -json \
-            | python3 -c "import json,sys; s=json.load(sys.stdin)['workspace']['schemes']; print(next(x for x in s if not x.startswith('Pods')))")
+          app=$(basename "$workspace" .xcworkspace)
+          schemes=$(xcodebuild -workspace "$workspace" -list -json)
+          scheme=$(printf '%s' "$schemes" | python3 -c \
+            "import json,sys; s=json.load(sys.stdin)['workspace']['schemes']; a=sys.argv[1]; print(a if a in s else next(x for x in s if not x.startswith('Pods')))" \
+            "$app")
           echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
           echo "scheme=$scheme" >> "$GITHUB_OUTPUT"
           echo "building $scheme in $workspace"
@@ -98,7 +102,13 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
-            | tail -80
+            2>&1 | tee /tmp/xcodebuild.log | grep -E "^(===|Building|\*\* )" || true
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "--- errors ---"
+            grep -E "error:|The following build commands failed" -A5 /tmp/xcodebuild.log | tail -60
+            exit "$status"
+          fi
 
       # Compiling is not the same as being present. A module whose config the autolinker
       # never read produces a perfectly green build and an app where `support()` reports
