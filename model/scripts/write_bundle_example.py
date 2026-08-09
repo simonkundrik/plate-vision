@@ -51,6 +51,12 @@ def example() -> dict:
     }
 
     return bundle.build_bundle(
+        conformal={
+            "keys": targets,
+            "offsets": [31.7, 3.4, 4.1, 7.1, 28.1],
+            "alpha": 0.1,
+            "calibration_size": 202,
+        },
         artifact={
             "name": "plate-vision-fp32.onnx",
             "bytes": 17280512,
