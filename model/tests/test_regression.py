@@ -7,6 +7,7 @@ measurement is load-bearing rather than cosmetic.
 
 from __future__ import annotations
 
+import itertools
 import math
 
 import pytest
@@ -143,3 +144,24 @@ def test_result_serialises_for_history():
     payload = result.as_dict()
     assert payload["mae"]["energy"] == 10.0
     assert payload["split"] == "val"
+
+
+class TestEndless:
+    """Food-101 has 75,750 training images against Nutrition5k's 2,424, so the two loaders
+    cannot be zipped: one epoch of the smaller set is a rounding error of the larger."""
+
+    def test_it_restarts_rather_than_stopping(self):
+        batches = list(itertools.islice(regression.endless([1, 2, 3]), 7))
+        assert batches == [1, 2, 3, 1, 2, 3, 1]
+
+    def test_it_keeps_drawing_new_data_across_restarts(self):
+        # The point of cycling rather than truncating: over many nutrition epochs the
+        # classification set is sampled through rather than the first N images every time.
+        seen = list(itertools.islice(regression.endless(range(5)), 12))
+        assert set(seen) == set(range(5))
+
+    def test_an_empty_loader_raises_instead_of_spinning(self):
+        # Without this the generator loops at full speed producing nothing, which presents
+        # as a hang rather than as an empty dataset.
+        with pytest.raises(ValueError, match="no batches"):
+            next(regression.endless([]))

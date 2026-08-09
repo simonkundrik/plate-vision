@@ -54,6 +54,26 @@ class RegressionResult:
         return line + f"  {self.seconds:.1f}s"
 
 
+def endless(loader: Iterable):
+    """Yield batches forever, restarting the loader when it runs out.
+
+    Food-101 has 75,750 training images against Nutrition5k's 2,424, so the two cannot be
+    zipped: one epoch of the smaller set is a rounding error of the larger. Drawing from a
+    loader that never ends keeps every nutrition step paired with a fresh classification
+    batch, and lets the classification set be sampled across many nutrition epochs rather
+    than being truncated to the first 2,424 images every time.
+    """
+    while True:
+        empty = True
+        for batch in loader:
+            empty = False
+            yield batch
+        if empty:
+            # Without this the generator spins at full speed producing nothing, which looks
+            # like a hang rather than an empty dataset.
+            raise ValueError("classification loader yielded no batches")
+
+
 def train_regression_epoch(
     model: nn.Module,
     loader: Iterable,
@@ -73,6 +93,9 @@ def train_regression_epoch(
     ingredient_weight: float = 0.0,
     distiller=None,
     kd_weight: float = 0.0,
+    classification_batches=None,
+    classification_criterion=None,
+    classification_weight: float = 0.0,
 ) -> RegressionResult:
     model.train()
     loss_meter = AverageMeter()
@@ -112,6 +135,11 @@ def train_regression_epoch(
 
         use_ingredients = ingredients is not None and ingredient_criterion is not None
         use_kd = distiller is not None and kd_weight > 0
+        use_classification = (
+            classification_batches is not None
+            and classification_criterion is not None
+            and classification_weight > 0
+        )
 
         with torch.amp.autocast(device_type=device.type, enabled=amp_enabled):
             if use_ingredients or use_kd:
@@ -136,6 +164,27 @@ def train_regression_epoch(
                 predictions = model(images)
                 pinball = criterion(predictions, targets)
                 loss = pinball
+
+            if use_classification:
+                # A second forward pass, on real Food-101 images with real labels.
+                #
+                # This is what distillation was standing in for and could not do. The
+                # teacher only ever scored cafeteria trays, so the backbone was pulled
+                # towards Nutrition5k by every gradient it received and defended by an
+                # opinion about the wrong distribution. Five runs traced the resulting
+                # frontier: preserving the classifier cost calorie accuracy monotonically,
+                # from 25.9% top-1 at 54.7 kcal to 86.1% at 86.3.
+                #
+                # Real batches pin the backbone to both distributions with data rather than
+                # with a proxy, which is the ordinary way a two-headed model is trained and
+                # the one thing none of those runs did.
+                cls_images, cls_labels = next(classification_batches)
+                cls_images = cls_images.to(device, non_blocking=True)
+                cls_labels = cls_labels.to(device, non_blocking=True)
+                cls_logits = model.forward_with_aux(cls_images)[2]
+                loss = loss + classification_weight * classification_criterion(
+                    cls_logits, cls_labels
+                )
 
         if scaler is not None:
             scaler.scale(loss).backward()
