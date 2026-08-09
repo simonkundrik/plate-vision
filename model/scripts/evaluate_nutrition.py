@@ -21,8 +21,31 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from platevision import checkpoint, datasets, evaluation, meta, models, regression, transforms
+from platevision import (
+    checkpoint,
+    datasets,
+    evaluation,
+    meta,
+    models,
+    regression,
+    routing,
+    transforms,
+)
 from platevision.quantile import enforce_monotonic
+
+
+def load_availability(path: Path | None, dish_ids: list[str]) -> list[set[str]]:
+    """Which routes had the evidence they needed, per dish.
+
+    Nutrition5k is cafeteria trays with no barcodes, no restaurant, and no reference object,
+    so with no file every dish falls to the vision route. That is the honest default and it
+    is worth seeing: it says the near-exact routes are measured on nothing.
+    """
+    if path is None:
+        return [set() for _ in dish_ids]
+
+    table = json.loads(path.read_text(encoding="utf-8"))
+    return [set(table.get(dish_id, [])) for dish_id in dish_ids]
 
 
 def collect(model, loader, device, target_transform):
@@ -91,6 +114,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--device", default=None)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--top-n", type=int, default=10)
+    parser.add_argument(
+        "--routes",
+        type=Path,
+        help="json mapping dish id to the routes with evidence for it; "
+        "without it every dish is evaluated on the vision route alone",
+    )
     parser.add_argument("--no-plot", action="store_true")
     args = parser.parse_args(argv)
 
@@ -103,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit:
         samples = samples[: args.limit]
     print(f"{args.split}: {len(samples):,} dishes of {stats.listed:,} listed")
+    dish_ids = [s.dish_id for s in samples]
 
     dataset = datasets.Nutrition5kDataset(
         samples, transform=transforms.eval_transform(), target_transform=target_transform
@@ -118,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         targets,
         target_keys=meta.target_keys(),
         quantiles=meta.quantiles(),
-        dish_ids=[s.dish_id for s in samples],
+        dish_ids=dish_ids,
         crossing_rate=crossing_rate,
         top_n=args.top_n,
     )
@@ -147,9 +177,32 @@ def main(argv: list[str] | None = None) -> int:
             f"[{case.lower:6.0f}, {case.upper:7.0f}] {flag}"
         )
 
+    availability = load_availability(args.routes, dish_ids)
+    routed = routing.build_routed_report(
+        predictions,
+        targets,
+        routing.assign_routes(availability),
+        target_keys=meta.target_keys(),
+        quantiles=meta.quantiles(),
+        dish_ids=dish_ids,
+        availability=availability,
+        crossing_rate=crossing_rate,
+        top_n=args.top_n,
+    )
+
+    print()
+    for line in routed.headline():
+        print(line)
+    if len(routed.routes) == 1 and routed.routes[0].route == routing.FALLBACK_ROUTE:
+        # Worth saying out loud rather than leaving to be inferred from a one-row table. The
+        # near-exact routes are shipped and unmeasured, which is not the same as accurate.
+        print("\n  every dish took the vision route; no other route is measured by this split")
+
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "report.json").write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
+    (args.out / "routed.json").write_text(json.dumps(routed.as_dict(), indent=2), encoding="utf-8")
     print(f"\n  wrote {args.out / 'report.json'}")
+    print(f"  wrote {args.out / 'routed.json'}")
 
     if not args.no_plot:
         plot(report, args.out)
