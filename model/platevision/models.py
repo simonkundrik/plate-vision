@@ -155,16 +155,23 @@ class NutritionModel(nn.Module):
 
 
 class CombinedModel(nn.Module):
-    """One backbone, two heads: Food-101 logits and nutrition quantiles.
+    """Two heads in one artifact: Food-101 logits and nutrition quantiles.
 
     The contract declares a single model with both outputs, so the app downloads and runs
-    one artifact rather than two.
+    one artifact rather than two. It says nothing about how many backbones are inside, and
+    that distinction turned out to matter.
 
-    This is only valid if both heads were fitted against *this* backbone. Nutrition
-    training fine-tunes the backbone, which invalidates the classification head from stage
-    one, so that head is re-fitted as a linear probe on the final frozen backbone before
-    this is assembled. Skipping that step produces a model whose logits are confidently
-    wrong while its nutrition outputs are fine, and nothing about the export would say so.
+    **Shared backbone**, the default. Valid only if both heads were fitted against it.
+    Nutrition training fine-tunes the backbone, which invalidates the stage-one
+    classification head, so that head has to be re-fitted as a linear probe first. Skipping
+    that produces logits that are confidently wrong while the nutrition outputs are fine,
+    and nothing about the export would say so.
+
+    **Separate backbones**, by passing ``nutrition_backbone``. Seven training runs measured
+    a monotonic trade between the two jobs on one backbone: classifier accuracy from 25.9%
+    to 86.1% bought calorie error from 54.7 to 86.3 kcal, and no configuration escaped it,
+    including joint training on both datasets. Giving each head the weights it was actually
+    fitted against costs size and a second forward pass, and removes the trade entirely.
     """
 
     def __init__(
@@ -176,11 +183,15 @@ class CombinedModel(nn.Module):
         num_targets: int,
         num_quantiles: int,
         drop_rate: float = 0.0,
+        nutrition_backbone: nn.Module | None = None,
     ) -> None:
         super().__init__()
         self.backbone = backbone
         self.classifier_head = classifier_head
         self.nutrition_head = nutrition_head
+        # Registered as None when shared, so state dict keys stay identical to the
+        # single-backbone artifacts already published and old checkpoints still load.
+        self.nutrition_backbone = nutrition_backbone
         self.num_targets = num_targets
         self.num_quantiles = num_quantiles
         self.dropout = nn.Dropout(drop_rate)
@@ -189,10 +200,23 @@ class CombinedModel(nn.Module):
         # nutrition head, so it would record 15 classes instead of 101.
         self.num_classes = classifier_head.out_features
 
+    @property
+    def shares_backbone(self) -> bool:
+        return self.nutrition_backbone is None
+
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.dropout(self.backbone(x))
         logits = self.classifier_head(features)
-        nutrition = self.nutrition_head(features).view(-1, self.num_targets, self.num_quantiles)
+
+        # A second pass when the backbones differ. Reusing the classifier's features would
+        # silently produce the shared-backbone model this exists to avoid, and the outputs
+        # would look entirely reasonable.
+        nutrition_features = (
+            features if self.shares_backbone else self.dropout(self.nutrition_backbone(x))
+        )
+        nutrition = self.nutrition_head(nutrition_features).view(
+            -1, self.num_targets, self.num_quantiles
+        )
         return logits, nutrition
 
 
