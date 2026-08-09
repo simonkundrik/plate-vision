@@ -30,12 +30,41 @@ granular access token scoped to this package over a classic automation token.
 Model weights are tens of megabytes and cannot live in the repository, so a GitHub Release
 is the distribution channel.
 
+A classifier-only artifact, whose nutrition head is random and flagged as such:
+
 ```bash
-cd model
 python scripts/export_model.py --classifier runs/kaggle-baseline/runs/baseline/best.pt \
                                --out runs/release --skip-quantization
-python scripts/publish_model.py --export-dir runs/release --tag model-v0.1.0 --dry-run
-python scripts/publish_model.py --export-dir runs/release --tag model-v0.1.0
+```
+
+A release with a **trained nutrition head** takes three steps, and none of them are optional:
+
+```bash
+python scripts/fit_classifier_head.py --nutrition-checkpoint runs/nutrition/best.pt \
+                                      --data-root data/food101/food-101 --out runs/combined
+python scripts/fit_conformal.py --checkpoint runs/nutrition/best.pt \
+                                --out runs/nutrition/conformal.json
+python scripts/export_model.py --combined runs/combined/combined.pt \
+                               --conformal runs/nutrition/conformal.json \
+                               --out runs/release --skip-quantization
+```
+
+**Why the classifier head is re-fitted.** Nutrition training fine-tunes the backbone, so the
+head from stage one describes features that no longer exist. Exporting the two together
+without the probe produces logits that are confidently wrong while the nutrition outputs are
+fine, and nothing in the export would reveal it.
+
+**Why the conformal offsets are refitted.** They must be calibrated on data exchangeable with
+what they are applied to. Offsets a training run fitted before that was understood came out
+near zero, and moved test coverage from 82.2% to 83.4% while the bundle labelled the interval
+90%. `fit_conformal.py` reports coverage on a holdout it did not calibrate on, and warns when
+the result falls short of its stated level.
+
+Then publish:
+
+```bash
+python scripts/publish_model.py --export-dir runs/release --tag model-v0.2.0 --dry-run
+python scripts/publish_model.py --export-dir runs/release --tag model-v0.2.0
 ```
 
 `publish_model.py` refuses to publish unless the manifest describes the artifact sitting
