@@ -20,6 +20,10 @@ const NO_TARGET_TRANSFORM =
   "The model bundle carries no target transform, so nutrition outputs cannot be converted " +
   "from the model's internal scale into kilocalories.";
 
+const NO_CONFORMAL_OFFSETS =
+  "This model bundle carries no conformal offsets, so its intervals would cover about 82% " +
+  "of the truth while being labelled 90%. Re-export it with --conformal.";
+
 /**
  * A loaded model.
  *
@@ -78,6 +82,13 @@ export class PlateVision {
     }
     if (!this.bundle.targetTransform) {
       return this.withoutNutrition(dishes, inferenceMs, NO_TARGET_TRANSFORM);
+    }
+    if (!this.bundle.conformal) {
+      // A trained head whose offsets never shipped. Its raw quantiles cover about 82% of
+      // the truth while the type calls them the 5th and 95th percentile, and there is no
+      // way to present that honestly from here. Withheld for the same reason an untrained
+      // head is: a number this library cannot stand behind is worse than no number.
+      return this.withoutNutrition(dishes, inferenceMs, NO_CONFORMAL_OFFSETS);
     }
 
     // Averaged in real units, after the inverse transform. The model predicts in
